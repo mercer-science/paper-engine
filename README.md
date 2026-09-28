@@ -159,9 +159,21 @@ The repository was republished on 2026-09-28, when it became public, and its
 history starts again from that date. An update will say the histories are
 unrelated. That is expected and needs doing once:
 
-- **Cloned:** in the toolkit folder, `git fetch origin` then
-  `git reset --hard origin/main`, then the two `install_skills.py` commands above.
-  Your defect list and anything else git ignores are left alone.
+- **Cloned:** in the toolkit folder, **copy your defect list out first** — the old
+  history tracked `system-changes.md`, so the reset below would delete it. The
+  same commands work in PowerShell and in a macOS or Linux terminal:
+
+  ```
+  cp system-changes.md ../system-changes.backup.md
+  git fetch origin
+  git reset --hard origin/main
+  cp ../system-changes.backup.md system-changes.md
+  ```
+
+  Then run the two `install_skills.py` commands above. Anything git already
+  ignored, such as `tools/.env`, is left alone. Any other file you changed in
+  the toolkit and want to keep: copy it out the same way first, because
+  `reset --hard` discards it.
 - **Plugin:** run `/plugin marketplace update paper-engine-marketplace`. If it cannot
   update, ask Claude to back up the plugin's data directory (your learned writing
   rules live there) **before** removing and re-adding the marketplace; see the
