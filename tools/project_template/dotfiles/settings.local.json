@@ -1,0 +1,53 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Rscript:*)",
+      "Bash(R:*)",
+      "Bash(python:*)",
+      "Bash(python3:*)",
+      "Bash(pandoc:*)",
+      "Bash(ls:*)",
+      "Bash(cat:*)",
+      "Bash(head:*)",
+      "Bash(tail:*)",
+      "Bash(find:*)",
+      "Bash(grep:*)"
+    ],
+    "deny": []
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/sync.sh\" start",
+            "timeout": 60
+          }
+        ]
+      },
+      {
+        "matcher": "clear",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/sync.sh\" report",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/sync.sh\" end",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

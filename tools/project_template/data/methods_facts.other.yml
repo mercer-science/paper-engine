@@ -1,0 +1,80 @@
+# methods_facts.yml — append as you go.
+#
+# The methods section is the one part of a paper that cannot be reconstructed
+# from this folder, because the facts it needs never enter the folder at all.
+# Written months later from memory and a lab notebook, it is where wrong
+# numbers enter a manuscript by accident rather than by carelessness.
+#
+# This is the generic template — `field:` in project.yml was not chemistry or
+# biochemistry. Replace these blocks with whatever your methods section
+# actually has to state. Anything left blank becomes a visible [FLAG: author]
+# in the draft rather than a guess.
+#
+# FOUR PARTS, and every methods section is some arrangement of them:
+#
+#   MATERIALS   what went in
+#   METHODS     what was done to it
+#   SOFTWARE    what analysed it, and at which version
+#   NOTES       everything that does not fit, and everything you would
+#               otherwise only remember
+#
+# Delete blocks that do not apply. Add blocks that do — the parser reads
+# `key: value` lines, so a block you invent is picked up like any other.
+
+
+# === MATERIALS ==============================================================
+
+materials:
+  - {name: "", supplier: "", cat_no: "", grade: "", preparation: ""}
+
+
+# === METHODS ================================================================
+
+setting:
+  site: ""
+  dates: ""
+  ethics_approval: ""       # protocol number and approving body, if applicable
+
+sample:
+  unit_of_observation: ""   # what one row of data is
+  n_planned:
+  selection: ""             # how units were chosen
+  exclusions: ""            # criteria decided BEFORE looking at the outcome
+
+procedure:
+  - {step: "", parameters: ""}
+
+instrumentation:
+  - {technique: "", instrument: "", parameters: ""}
+
+measurement:
+  outcomes: []              # [{name: "", instrument: "", units: "", precision: ""}]
+  blinding: ""
+  calibration: ""
+
+
+# === SOFTWARE ===============================================================
+# A version number is part of the method. "Analysed in Python" is not
+# reproducible; "Python 3.12.4, scipy 1.14.0" is.
+
+software:
+  # Anything that touched the data: acquisition, processing, analysis,
+  # plotting. R and its packages are recorded for you in
+  # data/analysis/provenance.json - do not retype them here.
+  - {name: "", version: "", purpose: ""}
+
+statistics:
+  software: ""              # auto-filled from data/analysis/provenance.json where possible
+  approach: ""              # the test, and what it is testing
+
+
+# === NOTES ==================================================================
+# The part that saves the paper. Anything odd, anything deviated from, anything
+# a reviewer might ask. A note that turns out not to matter costs one line; the
+# one you did not write costs a repeat experiment.
+
+notes:
+  - date: ""
+    note: ""
+
+deviations: ""              # where the protocol as run differs from as written

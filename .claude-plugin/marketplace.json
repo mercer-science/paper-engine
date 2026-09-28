@@ -1,0 +1,15 @@
+{
+  "$schema": "https://code.claude.com/schemas/marketplace.json",
+  "name": "paper-engine-marketplace",
+  "owner": {
+    "name": "Russell Mercer",
+    "email": "rmercer2@byu.edu"
+  },
+  "description": "The Academic Research Paper Engine: an open-source toolkit for scientific papers.",
+  "plugins": [
+    {
+      "name": "paper-engine",
+      "source": "./"
+    }
+  ]
+}

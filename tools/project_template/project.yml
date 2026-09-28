@@ -1,0 +1,49 @@
+# Machine-readable project state. Every skill and every R script reads this,
+# so it is the one place a fact about the project is written down.
+#
+#   paper_kind      what this document IS - research | review - which is not
+#                   what it is ABOUT (that is research_type). A review
+#                   manages a CORPUS where a research paper manages an
+#                   ANALYSIS, its body sections come from plan/outline.md's
+#                   `# Structure` rather than being IMRaD, and its layer-0
+#                   rule is the read tier of the source each sentence cites.
+#                   Absent reads as research
+#   expects_data    what this project will HOLD - measurements | images |
+#                   none - which is a third question from what it IS
+#                   (paper_kind) and what it is ABOUT (field). It decides
+#                   whether data/ is scaffolded at all, and whether mock data
+#                   is ever offered: a cryo-EM project gets image placeholder
+#                   panels instead, and a perspective paper gets neither.
+#                   Absent reads as measurements
+#   target_journal  selects the figure geometry in plan/theme/theme_journal.R
+#                   (ACS / Wiley / Nature presets, generic otherwise)
+#   revision        the project's round counter, bumped by writing-engine on
+#                   each round and shared across journals: a second journal
+#                   opens at the next round rather than starting again at r1,
+#                   so an rN is unambiguous project-wide. Decides which rN
+#                   snapshot goes into obsolete/
+#   rounds          which journal each round belonged to - the project-level
+#                   history, and the thing that answers "when did we switch"
+#   seed            set by plan/setup.R before every script, so a jittered
+#                   point or a bootstrap CI does not move between runs
+
+title: "{{title}}"
+short_name: "{{short_name}}"
+field: {{field}}                 # chemistry | biochemistry | other
+paper_kind: {{paper_kind}}       # research | review. Absent reads as research
+expects_data: {{expects_data}}   # measurements | images | none
+target_journal: "{{target_journal}}"
+journals: []                     # journal folders created under drafts/
+revision: 1
+rounds:                          # which journal each round belonged to
+created: {{created}}
+pi: "{{pi}}"
+seed: 1
+
+extra_sources:                   # folders outside the standard tree, and what
+                                 # writing-engine may do with each. Written by
+                                 # `scaffold.py survey --use/--ignore`, and
+                                 # hand-editable. `use:` is one of drafting |
+                                 # citations | data | floats | analysis |
+                                 # methods | ignore. An entry here is ASKED
+                                 # ABOUT ONCE and never again.

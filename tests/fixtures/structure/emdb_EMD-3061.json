@@ -1,0 +1,468 @@
+{
+    "_id": "5f3a8e5e043d5cc5a75d2113",
+    "admin": {
+        "authors_list": {
+            "author": [
+                {
+                    "instance_type": "author",
+                    "valueOf_": "Bai XC"
+                },
+                {
+                    "instance_type": "author",
+                    "valueOf_": "Yan CY"
+                },
+                {
+                    "instance_type": "author",
+                    "valueOf_": "Yang GH"
+                },
+                {
+                    "instance_type": "author",
+                    "valueOf_": "Lu PL"
+                },
+                {
+                    "instance_type": "author",
+                    "valueOf_": "Ma D"
+                },
+                {
+                    "instance_type": "author",
+                    "valueOf_": "Sun LF"
+                },
+                {
+                    "instance_type": "author",
+                    "valueOf_": "Zhou R"
+                },
+                {
+                    "instance_type": "author",
+                    "valueOf_": "Scheres SHW"
+                },
+                {
+                    "instance_type": "author",
+                    "valueOf_": "Shi YG"
+                }
+            ]
+        },
+        "current_status": {
+            "code": {
+                "valueOf_": "REL"
+            },
+            "processing_site": "PDBe"
+        },
+        "key_dates": {
+            "deposition": "2015-06-23T00:00:00",
+            "header_release": "2015-07-01T00:00:00",
+            "map_release": "2015-08-12T00:00:00",
+            "update": "2015-09-09T00:00:00"
+        },
+        "keywords": "cryo-EM, human gamma-secretase, membrane protein, single particle",
+        "sites": {
+            "deposition": "PDBe",
+            "last_processing": "PDBe"
+        },
+        "title": "Cryo-EM structure of the human gamma-secretase complex at 3.4 angstrom resolution."
+    },
+    "crossreferences": {
+        "citation_list": {
+            "primary_citation": {
+                "citation_type": {
+                    "author": [
+                        {
+                            "instance_type": "author",
+                            "order": 1,
+                            "valueOf_": "Bai XC"
+                        },
+                        {
+                            "instance_type": "author",
+                            "order": 2,
+                            "valueOf_": "Yan CY"
+                        },
+                        {
+                            "instance_type": "author",
+                            "order": 3,
+                            "valueOf_": "Yang GH"
+                        },
+                        {
+                            "instance_type": "author",
+                            "order": 4,
+                            "valueOf_": "Lu PL"
+                        },
+                        {
+                            "instance_type": "author",
+                            "order": 5,
+                            "valueOf_": "Ma D"
+                        },
+                        {
+                            "instance_type": "author",
+                            "order": 6,
+                            "valueOf_": "Sun LF"
+                        },
+                        {
+                            "instance_type": "author",
+                            "order": 7,
+                            "valueOf_": "Zhou R"
+                        },
+                        {
+                            "instance_type": "author",
+                            "order": 8,
+                            "valueOf_": "Scheres SHW"
+                        },
+                        {
+                            "instance_type": "author",
+                            "order": 9,
+                            "valueOf_": "Shi YG"
+                        }
+                    ],
+                    "external_references": [
+                        {
+                            "instance_type": "external_references",
+                            "type_": "PUBMED",
+                            "valueOf_": "26280335"
+                        },
+                        {
+                            "instance_type": "external_references",
+                            "type_": "DOI",
+                            "valueOf_": "doi:10.1038/NATURE14892"
+                        }
+                    ],
+                    "first_page": "212",
+                    "journal": "Nature",
+                    "journal_abbreviation": "Nature",
+                    "last_page": "217",
+                    "published": true,
+                    "title": "An atomic structure of human gamma-secretase",
+                    "volume": "525",
+                    "year": "2015"
+                }
+            }
+        },
+        "pdb_list": {
+            "pdb_reference": [
+                {
+                    "instance_type": "pdb_reference",
+                    "pdb_id": "5a63",
+                    "relationship": {
+                        "in_frame": "FULLOVERLAP"
+                    }
+                }
+            ]
+        }
+    },
+    "emdb_id": "EMD-3061",
+    "map": {
+        "annotation_details": "3D cryo-EM reconstruction of the human gamma-secretase complex at 3.4 angstrom resolution.",
+        "axis_order": {
+            "fast": "X",
+            "medium": "Y",
+            "slow": "Z"
+        },
+        "cell": {
+            "a": {
+                "units": "\u212b",
+                "valueOf_": "252.0"
+            },
+            "alpha": {
+                "units": "deg",
+                "valueOf_": "90.0"
+            },
+            "b": {
+                "units": "\u212b",
+                "valueOf_": "252.0"
+            },
+            "beta": {
+                "units": "deg",
+                "valueOf_": "90.0"
+            },
+            "c": {
+                "units": "\u212b",
+                "valueOf_": "252.0"
+            },
+            "gamma": {
+                "units": "deg",
+                "valueOf_": "90.0"
+            }
+        },
+        "contour_list": {
+            "contour": [
+                {
+                    "instance_type": "contour",
+                    "level": 0.08,
+                    "primary": true,
+                    "source": "AUTHOR"
+                }
+            ]
+        },
+        "data_type": "IMAGE STORED AS FLOATING POINT NUMBER (4 BYTES)",
+        "details": "::::EMDATABANK.org::::EMD-3061::::",
+        "dimensions": {
+            "col": 180,
+            "row": 180,
+            "sec": 180
+        },
+        "file": "emd_3061.map.gz",
+        "format": "CCP4",
+        "origin": {
+            "col": 0,
+            "row": 0,
+            "sec": 0
+        },
+        "pixel_spacing": {
+            "x": {
+                "units": "\u212b",
+                "valueOf_": "1.4"
+            },
+            "y": {
+                "units": "\u212b",
+                "valueOf_": "1.4"
+            },
+            "z": {
+                "units": "\u212b",
+                "valueOf_": "1.4"
+            }
+        },
+        "size_kbytes": 22783,
+        "spacing": {
+            "x": 180,
+            "y": 180,
+            "z": 180
+        },
+        "statistics": {
+            "average": 5.26e-05,
+            "maximum": 0.44705674,
+            "minimum": -0.2716414,
+            "std": 0.01502737
+        },
+        "symmetry": {
+            "space_group": "1"
+        }
+    },
+    "sample": {
+        "macromolecule_list": {
+            "macromolecule": [
+                {
+                    "instance_type": "protein_or_peptide",
+                    "macromolecule_id": 1,
+                    "molecular_weight": {
+                        "experimental": {
+                            "units": "MDa",
+                            "valueOf_": "0.17"
+                        },
+                        "theoretical": {
+                            "units": "MDa",
+                            "valueOf_": "0.17"
+                        }
+                    },
+                    "name": {
+                        "valueOf_": "gamma-secretase"
+                    },
+                    "natural_source": {
+                        "cell": "HEK 293F cells",
+                        "cellular_location": "membrane",
+                        "database": "NCBI",
+                        "organism": {
+                            "ncbi": 9606,
+                            "valueOf_": "Homo sapiens"
+                        },
+                        "synonym_organism": "Human"
+                    },
+                    "number_of_copies": "1",
+                    "oligomeric_state": "Heterotetramer",
+                    "recombinant_exp_flag": true,
+                    "recombinant_expression": {
+                        "database": "NCBI",
+                        "recombinant_cell": "HEK 293F cells",
+                        "recombinant_organism": {
+                            "ncbi": 9606,
+                            "valueOf_": "Homo sapiens"
+                        },
+                        "recombinant_plasmid": "pMLink"
+                    },
+                    "sequence": {}
+                }
+            ]
+        },
+        "name": {
+            "valueOf_": "human gamma-secretase"
+        },
+        "supramolecule_list": {
+            "supramolecule": [
+                {
+                    "instance_type": "sample_supramolecule",
+                    "molecular_weight": {
+                        "experimental": {
+                            "units": "MDa",
+                            "valueOf_": "0.17"
+                        },
+                        "theoretical": {
+                            "units": "MDa",
+                            "valueOf_": "0.17"
+                        }
+                    },
+                    "name": {
+                        "valueOf_": "human gamma-secretase"
+                    },
+                    "number_unique_components": 4,
+                    "oligomeric_state": "heterotetramer",
+                    "supramolecule_id": 1000
+                }
+            ]
+        }
+    },
+    "structure_determination_list": {
+        "structure_determination": [
+            {
+                "aggregation_state": "particle",
+                "image_processing": [
+                    {
+                        "ctf_correction": {
+                            "details": "Each particle"
+                        },
+                        "details": "Use a newly developed statistical movie processing and particle polishing approach to compensate for beam-induced movement and reduce the effect of radiation-damage.",
+                        "final_reconstruction": {
+                            "applied_symmetry": {
+                                "point_group": "C1"
+                            },
+                            "number_images_used": 159549,
+                            "resolution": {
+                                "res_type": "BY AUTHOR",
+                                "units": "\u212b",
+                                "valueOf_": "3.4"
+                            },
+                            "resolution_method": "OTHER",
+                            "software_list": {
+                                "software": [
+                                    {
+                                        "instance_type": "software",
+                                        "name": "CTFFIND3, RELION"
+                                    }
+                                ]
+                            }
+                        },
+                        "image_processing_id": 1,
+                        "instance_type": "singleparticle_processing"
+                    }
+                ],
+                "instance_type": "structure_determination",
+                "method": "singleParticle",
+                "microscopy_list": {
+                    "microscopy": [
+                        {
+                            "acceleration_voltage": {
+                                "units": "kV",
+                                "valueOf_": "300"
+                            },
+                            "calibrated_magnification": 35714.0,
+                            "date": "2014-10-02T00:00:00",
+                            "electron_source": "FIELD EMISSION GUN",
+                            "illumination_mode": "FLOOD BEAM",
+                            "image_recording_list": {
+                                "image_recording": [
+                                    {
+                                        "average_electron_dose_per_image": {
+                                            "units": "e/\u212b^2",
+                                            "valueOf_": "38"
+                                        },
+                                        "details": "20 frames were recorded by the direct electron detector",
+                                        "digitization_details": {
+                                            "sampling_interval": {
+                                                "units": "\u00b5m",
+                                                "valueOf_": "5"
+                                            }
+                                        },
+                                        "film_or_detector_model": {
+                                            "category": "CCD",
+                                            "valueOf_": "GATAN K2 (4k x 4k)"
+                                        },
+                                        "instance_type": "image_recording",
+                                        "number_real_images": 2925
+                                    }
+                                ]
+                            },
+                            "imaging_mode": "BRIGHT FIELD",
+                            "instance_type": "single_particle_microscopy",
+                            "microscope": "FEI TITAN KRIOS",
+                            "microscopy_id": 1,
+                            "nominal_cs": {
+                                "units": "mm",
+                                "valueOf_": "2.7"
+                            },
+                            "nominal_defocus_max": {
+                                "units": "\u00b5m",
+                                "valueOf_": "3.2"
+                            },
+                            "nominal_defocus_min": {
+                                "units": "\u00b5m",
+                                "valueOf_": "0.7"
+                            },
+                            "nominal_magnification": 81000.0,
+                            "specialist_optics": {
+                                "energy_filter": {
+                                    "lower_energy_threshold": {
+                                        "units": "eV",
+                                        "valueOf_": "0.0"
+                                    },
+                                    "name": "Gatan Quantum",
+                                    "upper_energy_threshold": {
+                                        "units": "eV",
+                                        "valueOf_": "20.0"
+                                    }
+                                }
+                            },
+                            "specimen_holder_model": "FEI TITAN KRIOS AUTOGRID HOLDER",
+                            "temperature": {
+                                "temperature_average": {
+                                    "units": "K",
+                                    "valueOf_": "85"
+                                },
+                                "temperature_max": {
+                                    "units": "K",
+                                    "valueOf_": "90"
+                                },
+                                "temperature_min": {
+                                    "units": "K",
+                                    "valueOf_": "80"
+                                }
+                            }
+                        }
+                    ]
+                },
+                "specimen_preparation_list": {
+                    "specimen_preparation": [
+                        {
+                            "buffer": {
+                                "details": "25 mM HEPES, pH 7.4, 150 mM NaCl and amphipol A8-35",
+                                "ph": 7.4
+                            },
+                            "concentration": {
+                                "units": "mg/mL",
+                                "valueOf_": "6"
+                            },
+                            "grid": {
+                                "details": "300 mesh Au 1.2/1.3 Quantifoil grid, glow discharged for 1 minute"
+                            },
+                            "instance_type": "single_particle_preparation",
+                            "preparation_id": 1,
+                            "staining": {
+                                "details": "cryo-EM",
+                                "type_": "NEGATIVE"
+                            },
+                            "vitrification": {
+                                "chamber_humidity": {
+                                    "units": "percentage",
+                                    "valueOf_": "100"
+                                },
+                                "chamber_temperature": {
+                                    "units": "K",
+                                    "valueOf_": "85"
+                                },
+                                "cryogen_name": "ETHANE",
+                                "instrument": "FEI VITROBOT MARK IV",
+                                "method": "Blot for 4 seconds before plunging"
+                            }
+                        }
+                    ]
+                },
+                "structure_determination_id": 1
+            }
+        ]
+    },
+    "version": "3.0.1.1"
+}

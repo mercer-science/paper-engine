@@ -1,0 +1,118 @@
+# methods_facts.yml — append as you go.
+#
+# The methods section is the one part of a paper that is mostly not
+# reconstructable from this folder, because most of the facts it needs never
+# enter the folder at all: reagent lots, solvent grades, who ran what and
+# when. Written eight months later from memory and a lab notebook, it is where
+# wrong numbers enter a manuscript by accident rather than by carelessness.
+#
+# INSTRUMENT PARAMETERS ARE THE EXCEPTION, and it is a large one. Most modern
+# instruments write their own settings into every file they save - the
+# microscope, the detector, the voltage, the dwell time, the field width, the
+# pixel size, to five significant figures. Those DO enter the folder, and
+# `scaffold.py harvest <project>` reads them out and records them here with a
+# per-file count. Run it before you fill in an acquisition value by hand, and
+# certainly before you leave one blank: a [FLAG: author] asking you for a
+# number that is already on disk is this engine failing, not you.
+#
+# Thirty seconds at the bench now; a day to reconstruct later. Anything left
+# blank becomes a visible [FLAG: author] in the draft rather than a guess.
+#
+# FOUR PARTS, and every methods section is some arrangement of them:
+#
+#   MATERIALS   what went in
+#   METHODS     what was done to it
+#   SOFTWARE    what analysed it, and at which version
+#   NOTES       everything that does not fit, and everything you would
+#               otherwise only remember
+#
+# Delete blocks that do not apply. Add blocks that do — the parser reads
+# `key: value` lines, so a block you invent is picked up like any other.
+
+
+# === MATERIALS ==============================================================
+
+materials:
+  # One entry per compound that matters. Purity and supplier belong in the
+  # paper; "used as received" is a claim and needs to be recorded as one.
+  - {name: "", supplier: "", cat_no: "", purity: "", purification: ""}   # e.g. "as received", "recrystallised from EtOH"
+
+
+# === METHODS ================================================================
+
+general:
+  atmosphere: ""            # e.g. N2 (Schlenk), Ar glovebox, ambient
+  solvent_drying: ""        # e.g. activated alumina column, distilled from CaH2
+  glassware: ""             # e.g. flame-dried under vacuum
+  temperature_control: ""   # e.g. cryostat, oil bath, thermocouple in the reaction
+
+nmr:
+  instrument: ""            # e.g. Bruker AVANCE NEO 500
+  field_MHz: {H1: , C13: }
+  solvent: ""               # e.g. CDCl3
+  reference: ""             # e.g. residual CHCl3 at 7.26 ppm
+  temperature_K:
+  experiments: []           # [1H, 13C{1H}, HSQC, HMBC, NOESY]
+
+mass_spec:
+  instrument: ""
+  ionization: ""            # ESI+ / ESI- / EI / MALDI / APCI
+  analyzer: ""              # e.g. Q-TOF, Orbitrap
+  resolution: ""
+  calibration: ""
+
+chromatography:
+  method: ""                # HPLC / UPLC / GC / SFC / flash
+  instrument: ""
+  column: ""                # phase, dimensions, particle size
+  mobile_phase: ""
+  gradient: ""
+  flow_mL_min:
+  temperature_C:
+  detection: ""             # e.g. DAD 254 nm, ELSD, FID
+
+other_instrumentation:
+  # IR, UV-vis, XRD, TGA, EPR, electrochemistry - whatever the paper reports.
+  - {technique: "", instrument: "", parameters: ""}
+
+crystallography:
+  diffractometer: ""
+  radiation: ""             # e.g. Mo K-alpha, 0.71073 A
+  temperature_K:
+  software: ""              # solution / refinement, with versions
+  ccdc_number: ""
+
+
+# === SOFTWARE ===============================================================
+# A version number is part of the method. "Analysed in Origin" is not
+# reproducible; "OriginPro 2024b (10.1.0.178)" is.
+
+software:
+  # Anything that touched the data: acquisition, processing, integration,
+  # fitting, plotting. R and its packages are recorded for you in
+  # data/analysis/provenance.json - do not retype them here.
+  - {name: "", version: "", purpose: ""}
+
+computation:
+  software: ""              # e.g. Gaussian 16 rev C.01, ORCA 5.0.4
+  method: ""                # functional / level of theory
+  basis_set: ""
+  solvation: ""             # e.g. SMD (acetonitrile)
+  dispersion: ""            # e.g. D3(BJ)
+
+statistics:
+  software: ""              # auto-filled from data/analysis/provenance.json where possible
+  approach: ""              # the test, and what it is testing
+
+
+# === NOTES ==================================================================
+# The part that saves the paper. Anything odd, anything deviated from, anything
+# a reviewer might ask. A note that turns out not to matter costs one line; the
+# one you did not write costs a repeat experiment.
+
+notes:
+  - date: ""
+    note: ""                # e.g. "Batch 3 run 4 C cold - chiller fault, 2026-03-11"
+
+deviations: ""              # where the protocol as run differs from as written
+exclusions: ""              # any sample or run left out, and the reason decided BEFORE looking

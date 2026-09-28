@@ -1,0 +1,290 @@
+{
+  "project": {
+    "title": "Chemoreceptor array symmetry across a thermal range",
+    "short_name": "array_symmetry",
+    "target_journal": "Nature"
+  },
+  "background": "Bacterial chemoreceptor arrays are hexagonally packed signalling lattices whose architecture is conserved from Escherichia coli to Thermotoga maritima [PMID 22267509]. In-situ cryo-electron tomography has resolved these arrays in intact mesophilic cells and established that lattice spacing is essentially invariant across species [PMID 20080590]. Order within the lattice, however, has only been quantified in organisms grown near 37 C.",
+  "gap": "Whether array order increases with growth temperature has never been measured. The two structural surveys that span thermophiles report lattice spacing but not a symmetry or order parameter [PMID 22267509], and the one study that does quantify order is restricted to a single mesophile [PMID 20080590]. The assumption that arrays are equally ordered at all growth temperatures is therefore assumed rather than shown.",
+  "question": "Does chemoreceptor array order increase with optimal growth temperature?",
+  "hypothesis": "Arrays in thermophiles are more ordered than arrays in mesophiles, because a stiffer lattice is required to maintain cooperativity at higher thermal noise.",
+  "prediction_if_true": "Symmetry index is higher in the thermophile than the mesophile, with no change in lattice spacing.",
+  "prediction_if_false": "Symmetry index is indistinguishable between species, which would mean lattice order is set by something other than growth temperature and is itself worth reporting.",
+  "design": {
+    "design": "Cross-species comparison by in-situ cryo-electron tomography",
+    "samples_n": "12 tomograms per species, 2 species",
+    "independent": "species (thermophile vs mesophile)",
+    "outcomes": "symmetry_index, lattice_spacing_nm, receptor count per array",
+    "controls": "lattice spacing, which is expected to be invariant and acts as an internal negative control",
+    "stats": "Welch t-test or Wilcoxon on symmetry_index by species, chosen by Shapiro-Wilk; Hedges' g with CI"
+  },
+  "narrative": "Chemoreceptor arrays are the best-characterised signalling lattice in biology, and their architecture is conserved across a 50 C range of growth temperatures. That conservation has been read as evidence that the lattice is insensitive to its thermal environment. We measure array order rather than array spacing, and find that order tracks growth temperature while spacing does not. The lattice is therefore tuned, not fixed, and the parameter that is tuned is the one nobody was measuring.",
+  "floats": [
+    {
+      "label": "Figure 1",
+      "kind": "figure",
+      "claim": "Arrays are resolvable and hexagonally packed in both species.",
+      "folder": "Fig01_representative_tomograms"
+    },
+    {
+      "label": "Figure 2",
+      "kind": "figure",
+      "claim": "Array order is higher in the thermophile than in the mesophile.",
+      "folder": "Fig02_symmetry_by_species"
+    },
+    {
+      "label": "Figure 3",
+      "kind": "figure",
+      "claim": "Lattice spacing is unchanged between species, so the order difference is not a packing artefact.",
+      "folder": "Fig03_spacing_invariant"
+    },
+    {
+      "label": "Table 1",
+      "kind": "table",
+      "claim": "Acquisition parameters are matched across species except for growth temperature.",
+      "folder": "Table01_tomogram_summary"
+    }
+  ],
+  "outline": [
+    {
+      "section": "Introduction",
+      "line": "Chemoreceptor arrays are a conserved hexagonal signalling lattice.",
+      "evidence": "PMID 22267509"
+    },
+    {
+      "section": "Introduction",
+      "line": "Cryo-ET has resolved these arrays in intact mesophilic cells and shown spacing is invariant.",
+      "evidence": "PMID 20080590"
+    },
+    {
+      "section": "Introduction",
+      "line": "Array order above 60 C has never been quantified, so thermal tuning is assumed rather than shown.",
+      "evidence": "background"
+    },
+    {
+      "section": "Results",
+      "line": "Arrays are resolvable and hexagonally packed in both species.",
+      "evidence": "Fig 1"
+    },
+    {
+      "section": "Results",
+      "line": "Array order is higher in the thermophile.",
+      "evidence": "Fig 2; stats: symmetry_index ~ species"
+    },
+    {
+      "section": "Results",
+      "line": "Lattice spacing is unchanged, so the difference is not a packing artefact.",
+      "evidence": "Fig 3; stats: lattice_spacing_nm ~ species"
+    },
+    {
+      "section": "Discussion",
+      "line": "Lattice order, not lattice spacing, is the parameter that tracks growth temperature.",
+      "evidence": "Fig 2; Fig 3"
+    },
+    {
+      "section": "Discussion",
+      "line": "The conservation of spacing has been over-read as conservation of the whole lattice.",
+      "evidence": "PMID 22267509"
+    }
+  ],
+  "literature": [
+    {
+      "pmid": "22267509",
+      "status": "verified",
+      "title": "Structure and function of the bacterial chemotaxis signalling array",
+      "authors": [
+        "Briegel A",
+        "Jensen GJ"
+      ],
+      "journal_abbrev": "Curr Opin Struct Biol",
+      "year": "2012",
+      "doi": "10.1016/j.sbi.2011.12.001",
+      "flags": [],
+      "why": "The structural survey that establishes hexagonal packing as conserved across the bacterial tree, including thermophiles. It is here because it is the paper that makes the conservation claim this project tests, and because it reports lattice spacing without reporting any order parameter. That absence is the gap."
+    },
+    {
+      "pmid": "20080590",
+      "status": "verified",
+      "title": "Universal architecture of bacterial chemoreceptor arrays",
+      "authors": [
+        "Briegel A",
+        "Ortega DR",
+        "Tocheva EI"
+      ],
+      "journal_abbrev": "Proc Natl Acad Sci U S A",
+      "year": "2009",
+      "doi": "10.1073/pnas.0905181106",
+      "flags": [],
+      "why": "The in-situ cryo-ET study that fixes 12 nm spacing as universal. It is the methodological template for this project and the only paper that quantifies order, but it does so in a single mesophile. It establishes both the measurement and its limit."
+    },
+    {
+      "pmid": "31234567",
+      "status": "partial",
+      "title": "Thermal adaptation of membrane protein assemblies",
+      "authors": [
+        "Example A"
+      ],
+      "journal_abbrev": "J Struct Biol",
+      "year": "2019",
+      "doi": "",
+      "flags": [
+        "Year mismatch: cited 2018, PubMed says 2019."
+      ],
+      "why": "Supplies the physical argument that lattice stiffness must rise with thermal noise to preserve cooperativity. Matched only partially on title, and the year we had was wrong, so the flag is carried here deliberately."
+    }
+  ],
+  "data_files": [
+    {
+      "file": "array_symmetry.csv",
+      "group_column": "species",
+      "id_prefix": "tomo_",
+      "note": "One row per tomogram. A tomogram is the unit of observation; arrays within a tomogram are not independent.",
+      "columns": [
+        {
+          "name": "tomogram_id",
+          "kind": "identifier",
+          "notes": "stable across files"
+        },
+        {
+          "name": "species",
+          "kind": "categorical",
+          "levels": [
+            "thermophile",
+            "mesophile"
+          ],
+          "float": "Figure 2"
+        },
+        {
+          "name": "symmetry_index",
+          "kind": "continuous",
+          "units": "0-1",
+          "range": "0-1",
+          "float": "Figure 2",
+          "mock": {
+            "thermophile": [
+              0.82,
+              0.05
+            ],
+            "mesophile": [
+              0.71,
+              0.05
+            ]
+          }
+        },
+        {
+          "name": "lattice_spacing_nm",
+          "kind": "continuous",
+          "units": "nm",
+          "range": "10-14",
+          "float": "Figure 3",
+          "mock": {
+            "thermophile": [
+              12.1,
+              0.4
+            ],
+            "mesophile": [
+              12.0,
+              0.4
+            ]
+          }
+        },
+        {
+          "name": "n_receptors",
+          "kind": "count",
+          "units": "receptors",
+          "float": "Table 1",
+          "mock": {
+            "thermophile": 240,
+            "mesophile": 210
+          }
+        },
+        {
+          "name": "defocus_um",
+          "kind": "continuous",
+          "units": "um",
+          "notes": "acquisition parameter, not an outcome"
+        }
+      ]
+    }
+  ],
+  "mock": {
+    "n": 12,
+    "seed": 1,
+    "hypothesis": "Arrays are more ordered in the thermophile than the mesophile.\nExpect ~15% higher symmetry index, SD ~5%, n = 12 tomograms per group.\nLattice spacing is expected NOT to differ - it is the internal negative control."
+  },
+  "search": {
+    "queries": [
+      {
+        "query": "chemoreceptor array cryo-electron tomography",
+        "count": 25,
+        "range": "2021-2026"
+      },
+      {
+        "query": "chemoreceptor array review",
+        "count": 6,
+        "range": "2019-2026"
+      }
+    ],
+    "note": "PubMed coverage here is good; this is a biology topic, so a thin result would have meant a thin field rather than a scope limit."
+  },
+  "ideas": {
+    "chosen": "Array order across a thermal range",
+    "why": "It is the only candidate whose negative result is still publishable: if order does not track temperature, the conservation claim gets stronger and more precise, which is itself a finding. The other two are only publishable if they work.",
+    "unknowns": [
+      "Whether the thermophile grows to sufficient density for plunge-freezing without a carbon support - the SOP does not cover it",
+      "Whether existing EMPIAR depositions include thermophile tomograms that would remove the need for new collection"
+    ],
+    "candidates": [
+      {
+        "gap": "Array order has never been quantified above 60 C.",
+        "status": "chosen",
+        "evidence": [
+          "PMID 22267509 - surveys thermophiles but reports spacing only, no order parameter",
+          "PMID 20080590 - quantifies order, but in one mesophile"
+        ],
+        "why_open": "The measurement exists and the organisms exist; nobody has put them together.",
+        "what_it_takes": "12 tomograms per species on the existing Krios time, plus the symmetry pipeline already used for the mesophile.",
+        "feasibility": "Scope access: yes, monthly block. Thermophile culture: idk, never grown in this lab. Public data: idk."
+      },
+      {
+        "gap": "Whether array order predicts chemotactic performance.",
+        "status": "dropped",
+        "evidence": [
+          "PMID 20080590 - establishes the order measurement but does not link it to behaviour"
+        ],
+        "why_open": "Requires pairing structural and behavioural assays in the same strain.",
+        "what_it_takes": "A behavioural assay this lab does not run.",
+        "why_dropped": "Only publishable if the correlation is strong; a null result reads as a failed experiment rather than a finding."
+      },
+      {
+        "gap": "Whether array order changes within one organism across growth temperature.",
+        "status": "dropped",
+        "evidence": [
+          "PMID 31234567 - argues stiffness should track thermal noise, without measuring it"
+        ],
+        "why_open": "Nobody has grown one organism across its full permissive range and imaged it.",
+        "what_it_takes": "Four growth temperatures, 12 tomograms each - four times the scope time.",
+        "why_dropped": "Same claim as the chosen candidate at four times the cost; kept as the obvious follow-up."
+      }
+    ]
+  },
+  "narratives": [
+    {
+      "title": "Lattice order tracks growth temperature",
+      "claim": "Chemoreceptor array order, not spacing, is what varies with thermal environment.",
+      "framing": "mechanism paper",
+      "journal": "Nature-tier or PNAS",
+      "chosen": true
+    },
+    {
+      "title": "A symmetry metric for in-situ signalling lattices",
+      "claim": "Array order can be measured reproducibly from in-situ tomograms.",
+      "framing": "methods paper",
+      "journal": "J Struct Biol"
+    }
+  ],
+  "open_questions": [
+    "Does the symmetry pipeline need re-tuning for the thermophile's lower contrast?",
+    "Is one tomogram per cell the right unit, or should arrays be nested within cells?"
+  ]
+}

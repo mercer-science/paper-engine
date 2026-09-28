@@ -1,0 +1,34 @@
+# The controlled vocabulary of research types - prose 5.5.
+#
+# Layer 3 of the brief is scoped by these, so they have to be stable. A type
+# invented per project scopes every rule to a population of one, no rule ever
+# reaches two observations, and nothing is ever learned - and nothing errors
+# while that happens. Hence a closed list, extended only with a reason.
+#
+# `parents` is how a rule generalizes one step: a rule scoped to life_science
+# applies to biochemistry, structural_bio and clinical.
+
+- id: surface_science
+  label: Surface science / UHV
+  parents: [physical_science]
+- id: biochemistry
+  label: Biochemistry
+  parents: [life_science]
+- id: structural_bio
+  label: Structural biology / cryo-EM
+  parents: [life_science]
+- id: clinical
+  label: Clinical / medical
+  parents: [life_science]
+- id: synthetic_chem
+  label: Synthetic chemistry
+  parents: [physical_science]
+- id: methods_dev
+  label: Methods development
+  parents: []
+- id: physical_science
+  label: Physical science (parent)
+  parents: []
+- id: life_science
+  label: Life science (parent)
+  parents: []

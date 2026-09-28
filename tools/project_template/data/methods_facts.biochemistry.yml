@@ -1,0 +1,110 @@
+# methods_facts.yml — append as you go.
+#
+# The methods section is the one part of a paper that is mostly not
+# reconstructable from this folder, because most of the facts it needs never
+# enter the folder at all: buffer compositions, lot numbers, who ran what and
+# when. Written eight months later from memory and a lab notebook, it is where
+# wrong numbers enter a manuscript by accident rather than by carelessness.
+#
+# ACQUISITION PARAMETERS ARE THE EXCEPTION, and it is a large one. The
+# microscope writes its own settings into every file it saves - the
+# instrument, the detector and its mode, the voltage, the dwell time, the
+# pixel size - to five significant figures. Those DO enter the folder, and
+# `scaffold.py harvest <project>` reads them out and records them here with a
+# per-file count. Run it before you fill in an acquisition value by hand, and
+# certainly before you leave one blank: a [FLAG: author] asking you for a
+# number that is already on disk is this engine failing, not you.
+#
+# Filling in the rest is thirty seconds at the microscope. Reconstructing it is
+# a day. Anything left blank becomes a visible [FLAG: author] in the draft
+# rather than a guess.
+#
+# FOUR PARTS, and every methods section is some arrangement of them:
+#
+#   MATERIALS   what went in
+#   METHODS     what was done to it
+#   SOFTWARE    what analysed it, and at which version
+#   NOTES       everything that does not fit, and everything you would
+#               otherwise only remember
+#
+# Delete blocks that do not apply. Add blocks that do — the parser reads
+# `key: value` lines, so a block you invent is picked up like any other.
+
+
+# === MATERIALS ==============================================================
+
+materials:
+  # Strains, plasmids, antibodies, detergents, grids, commercial kits.
+  - {name: "", supplier: "", cat_no: "", grade: "", preparation: ""}
+
+construct:
+  gene: ""                  # and organism
+  tag: ""                   # e.g. N-terminal His6-SUMO, cleaved with ULP1
+  mutations: ""
+  expression_host: ""       # e.g. E. coli BL21(DE3), Sf9
+  plasmid: ""               # and Addgene number if deposited
+
+
+# === METHODS ================================================================
+
+sample_prep:
+  strain: ""
+  growth: {medium: "", temperature_C: , OD600_harvest: }
+  buffer: ""
+  grids: {type: "", glow_discharge: ""}
+  vitrification: {device: "", blot_time_s: , humidity_pct: , temperature_C: }
+
+acquisition:
+  microscope: ""            # e.g. Titan Krios G3i
+  voltage_kV:
+  detector: ""              # e.g. K3 with BioQuantum energy filter
+  energy_filter_slit_eV:
+  magnification:
+  pixel_size_A:
+  defocus_range_um: []
+  total_dose_e_per_A2:
+  frames_per_movie:
+  tilt_scheme: ""           # tomography: e.g. dose-symmetric, +/-60 deg, 3 deg steps
+
+processing:
+  particles: {picked: , after_2d: , final: }
+  symmetry: ""
+  resolution_A:
+  fsc_criterion: ""         # e.g. 0.143
+  map_sharpening_B:
+
+
+# === SOFTWARE ===============================================================
+# A version number is part of the method. "Processed in RELION" is not
+# reproducible; "RELION 5.0" is. Every step in the pipeline gets a row.
+
+software:
+  # Acquisition, motion correction, CTF, picking, classification, refinement,
+  # model building, validation, figure preparation. R and its packages are
+  # recorded for you in data/analysis/provenance.json - do not retype them.
+  - {name: "", version: "", purpose: ""}
+
+pipeline: []                # [{tool: "", version: "", step: ""}] in the order run
+
+statistics:
+  software: ""              # auto-filled from data/analysis/provenance.json where possible
+  approach: ""              # the test, and what it is testing
+
+
+# === NOTES ==================================================================
+# The part that saves the paper. Anything odd, anything deviated from, anything
+# a reviewer might ask. A note that turns out not to matter costs one line; the
+# one you did not write costs a repeat session on the microscope.
+
+deposition:
+  emdb: ""
+  pdb: ""
+  raw_data: ""              # e.g. EMPIAR accession
+
+notes:
+  - date: ""
+    note: ""                # e.g. "Session 2 stage drift - first 40 movies discarded"
+
+deviations: ""              # where the protocol as run differs from as written
+exclusions: ""              # any micrograph, class or dataset left out, and the
+                            # reason decided BEFORE looking at the result

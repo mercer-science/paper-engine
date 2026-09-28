@@ -1,0 +1,45 @@
+// Pins what Pylance checks, so the Problems panel says the same thing on
+// every machine. The toolkit is kept at zero diagnostics under these settings;
+// a warning that appears here is a real one, not a local configuration.
+//
+// Needs `python -m pip install lxml-stubs` for tools/docx_edits.py: lxml ships
+// etree as a compiled module with no type information, so without the stubs
+// every etree call reads as an unknown symbol.
+{
+  // tests/fulltext.py and tests/reliability.py reach the engine by
+  // sys.path.insert at runtime, because tools/ is not a package and pubmed.py
+  // is imported by name. Pyright cannot follow that, so it is told here.
+  "extraPaths": ["tools"],
+
+  "typeCheckingMode": "standard",
+
+  // The floor AGENTS.md states. Checking against it catches syntax a newer
+  // local interpreter would accept and a collaborator's would not.
+  "pythonVersion": "3.12",
+
+  "include": ["tools", "tests"],
+
+  // Pylance greys out an unused import or local in the editor and lists it in
+  // the Problems panel, but `standard` mode leaves these rules off, so
+  // `pyright --project` reported zero while the panel showed 34. That gap is
+  // the whole reason this file exists, so the rules are pinned on: what the
+  // CLI prints and what the panel shows are now the same set.
+  //
+  // The convention for a genuinely-unused name is a leading underscore -
+  // `_out` in a `code, _out, err = run(...)` unpack, `_proj` where only the
+  // second half of a pair is wanted. Pyright treats that as deliberate and
+  // stays quiet, so silencing one of these never needs a suppression comment.
+  // Note `# noqa` does NOT work here; it is a flake8 directive and pyright
+  // ignores it (tests/toc_graphic.py:_have_pypdf references the import
+  // instead).
+  "reportUnusedImport": "warning",
+  "reportUnusedVariable": "warning",
+  "reportUnusedFunction": "warning",
+  "reportUnusedClass": "warning",
+  "reportUnusedExpression": "warning",
+  "reportUnnecessaryComparison": "warning",
+
+  // project_template holds files copied verbatim into a new paper project.
+  // They are templates, not modules on this import path.
+  "exclude": ["**/__pycache__", "tools/project_template"]
+}

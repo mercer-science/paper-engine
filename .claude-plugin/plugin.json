@@ -1,0 +1,29 @@
+{
+  "$schema": "https://code.claude.com/schemas/plugin.json",
+  "name": "paper-engine",
+  "displayName": "Academic Research Paper Engine",
+  "version": "2026.9.28",
+  "description": "Scaffold, draft, check and assemble a scientific paper: eight skills over eighteen standalone Python engines and an R float pipeline.",
+  "author": {
+    "name": "Russell Mercer",
+    "email": "rmercer2@byu.edu"
+  },
+  "license": "MIT",
+  "keywords": [
+    "research",
+    "writing",
+    "manuscript",
+    "figures",
+    "citations"
+  ],
+  "skills": [
+    "./skills/analysis",
+    "./skills/create-graphic-figure",
+    "./skills/flag-resolver",
+    "./skills/idea-generation",
+    "./skills/refine-figure",
+    "./skills/reorganize-directory",
+    "./skills/setup-project-directory",
+    "./skills/writing-engine"
+  ]
+}

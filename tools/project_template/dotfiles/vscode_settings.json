@@ -1,0 +1,25 @@
+{
+  "//": "OneDrive writes a conflict copy whenever two machines touch a file. render_all.R skips them; this hides them so the explorer stays readable.",
+  "files.exclude": {
+    "**/*-DESKTOP-*": true,
+    "**/*conflicted copy*": true,
+    "**/.Rhistory": true,
+    "**/.RData": true
+  },
+  "search.exclude": {
+    "**/*-DESKTOP-*": true,
+    "plan/preview.html": true,
+    "plan/floats": true
+  },
+  "files.associations": {
+    "*.Rmd": "rmd",
+    ".here": "plaintext"
+  },
+  "r.bracketedPaste": true,
+  "editor.rulers": [80],
+  "editor.renderWhitespace": "boundary",
+  "[markdown]": {
+    "editor.wordWrap": "on",
+    "editor.quickSuggestions": { "other": false }
+  }
+}

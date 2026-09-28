@@ -1,0 +1,61 @@
+# Secrets. tools/.env holds the NCBI API key and must never be published.
+# tools/.env.example is tracked, so a collaborator knows what to create.
+.env
+
+# Python bytecode
+__pycache__/
+*.pyc
+
+# Copyrighted source articles. writing_guides/writing_rules.md is the distilled
+# digest, it is tracked, and per CLAUDE.md it is what drafting actually loads.
+# The source PDFs are not read by any code - they are cited in comments as the
+# source of a measurement - and are not ours to redistribute.
+#
+# As of 2026-09-24 they are not in this tree at all: they live in the sibling
+# `paper-engine-corpus/writing_guides/`, so the repository tree is only what a
+# member receives. The rule stays so that dropping one back in here is still
+# ignored rather than committed by accident.
+writing_guides/*.pdf
+
+# OneDrive and Windows noise
+desktop.ini
+Thumbs.db
+*~
+*.tmp
+
+# Word lock files, created while a .docx is open
+~$*.docx
+
+# The report spool. On a source checkout this is where defect records wait to
+# be sent, and where report.json keeps the reports-repo token - so it is a
+# secret directory, not just noise. Members installing the plugin never use
+# this path at all; theirs resolves to ${CLAUDE_PLUGIN_DATA}. See
+# specs/distribution.md 5.
+.spool/
+
+# The probe corpus: real, unpublished manuscripts, with a real byline and a
+# real email in them. `specs/flow-and-conclusion-2026-09-19.md`,
+# `specs/probes/sentence-boundary-2026-09-20/` and
+# `specs/probes/magnitude-2026-09-20/` all read these, and the probes still
+# run - the files are on the machine, they are just not in the history.
+#
+# Kept out because git history is the one place a decision is expensive to
+# undo. TODO.md 5.5 is still open on whether this repository goes public, and
+# committing somebody's unpublished draft turns that question into a history
+# rewrite before it can even be asked. A probe corpus is reproducible; a
+# published draft is not retractable.
+#
+# As of 2026-09-24 the corpus is not in this tree at all: it lives in the
+# sibling `paper-engine-corpus/training/`, and both probes resolve it through
+# $PAPER_ENGINE_CORPUS, then that sibling, then this path. The rule stays so
+# that dropping a draft back in here is still ignored rather than committed.
+training/
+
+# The maintainer's notes and the defect ledger stay on the machine that wrote
+# them. They are written against real, often unpublished projects, and this
+# repository is public. The ledger is created from
+# tools/system-changes.template.md on first use.
+system-changes.md
+specs/
+history/
+TODO.md

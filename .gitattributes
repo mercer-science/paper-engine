@@ -1,0 +1,10 @@
+# Store and check out all text as LF, on every machine. Python, R and pandoc
+# read LF fine on Windows, and this keeps a Mac collaborator's checkout
+# byte-identical to a Windows one, so diffs show real edits only.
+* text=auto eol=lf
+
+# Binaries git must never line-ending-convert or try to diff as text.
+*.docx binary
+*.pdf  binary
+*.png  binary
+*.pptx binary

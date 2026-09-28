@@ -1,0 +1,642 @@
+[
+ {
+  "title": "Science and technology roadmap for graphene, related two-dimensional crystals, and hybrid systems",
+  "expect": "verified",
+  "field": "surface",
+  "doi": "10.1039/c4nr01600a",
+  "journal": "Nanoscale",
+  "note": "harvested from openalex"
+ },
+ {
+  "title": "1321. LEED, Auger spectroscopy, and contact potential studies of copper-gold alloy single crystal surfaces",
+  "expect": "verified",
+  "field": "surface",
+  "doi": "10.1016/0042-207x(75)90588-6",
+  "journal": "Vacuum",
+  "note": "harvested from crossref"
+ },
+ {
+  "title": "X-ray photoelectron spectroscopy: Towards reliable binding energy referencing",
+  "expect": "verified",
+  "field": "surface",
+  "doi": "10.1016/j.pmatsci.2019.100591",
+  "journal": "Progress in Materials Science",
+  "note": "harvested from openalex"
+ },
+ {
+  "title": "Mechanisms for oxygen adsorption on the Si(110) surface studied by Auger electron spectroscopy",
+  "expect": "verified",
+  "field": "surface",
+  "doi": "10.1016/0167-2584(81)90522-3",
+  "journal": "Surface Science Letters",
+  "note": "harvested from crossref"
+ },
+ {
+  "title": "Multiplet effects in X-ray spectroscopy",
+  "expect": "verified",
+  "field": "surface",
+  "doi": "10.1016/j.ccr.2004.03.018",
+  "journal": "Coordination Chemistry Reviews",
+  "note": "harvested from openalex"
+ },
+ {
+  "title": "Summary Abstract: Oxygen adsorption on Si(110) studied by Auger electron spectroscopy",
+  "expect": "verified",
+  "field": "surface",
+  "doi": "10.1116/1.570992",
+  "journal": "Journal of Vacuum Science and Technology",
+  "note": "harvested from crossref"
+ },
+ {
+  "title": "Influence of crystal structure of nanosized ZrO2 on photocatalytic degradation of methyl orange",
+  "expect": "verified",
+  "field": "surface",
+  "doi": "10.1186/s11671-015-0780-z",
+  "journal": "Nanoscale Research Letters",
+  "note": "harvested from openalex"
+ },
+ {
+  "title": "Auger-electron spectroscopy, electron-energy-loss spectroscopy, and x-ray photoemission spectroscopy studies of oxygen adsorption on the InP(111)-(1×1) surface",
+  "expect": "verified",
+  "field": "surface",
+  "doi": "10.1103/physrevb.43.4803",
+  "journal": "Physical Review B",
+  "note": "harvested from crossref"
+ },
+ {
+  "title": "Adsorption and activation of molecular oxygen over atomic copper(I/II) site on ceria",
+  "expect": "verified",
+  "field": "surface",
+  "doi": "10.1038/s41467-020-17852-8",
+  "journal": "Nature Communications",
+  "note": "harvested from openalex"
+ },
+ {
+  "title": "He+ backscattering and Auger electron spectroscopy study of the ion-induced modification of copper films deposited on single-crystal silicon",
+  "expect": "verified",
+  "field": "surface",
+  "doi": "10.1016/0040-6090(79)90137-8",
+  "journal": "Thin Solid Films",
+  "note": "harvested from crossref"
+ },
+ {
+  "title": "Calibration in Auger electron spectroscopy by means of coadsorption",
+  "expect": "verified",
+  "field": "surface",
+  "doi": "10.1016/0039-6028(75)90162-4",
+  "journal": "Surface Science",
+  "note": "harvested from openalex"
+ },
+ {
+  "title": "Auger electron spectroscopy study of a sulfur-oxygen surface reaction on a Cu(110) crystal",
+  "expect": "verified",
+  "field": "surface",
+  "doi": "10.1016/0039-6028(71)90177-4",
+  "journal": "Surface Science",
+  "note": "harvested from crossref"
+ },
+ {
+  "title": "Single crystal hybrid perovskite field-effect transistors",
+  "expect": "verified",
+  "field": "surface",
+  "doi": "10.1038/s41467-018-07706-9",
+  "journal": "Nature Communications",
+  "note": "harvested from openalex"
+ },
+ {
+  "title": "A practical guide to quartz crystal microbalance with dissipation monitoring of thin polymer films",
+  "expect": "verified",
+  "field": "vacuum",
+  "doi": "10.1002/pol.20210324",
+  "journal": "Journal of Polymer Science",
+  "note": "harvested from openalex"
+ },
+ {
+  "title": "Quartz crystal microbalance thin-film dissolution rate monitor",
+  "expect": "verified",
+  "field": "vacuum",
+  "doi": "10.1063/1.1140405",
+  "journal": "Review of Scientific Instruments",
+  "note": "harvested from crossref"
+ },
+ {
+  "title": "Mechanism of Chemical Bath Deposition of Cadmium Sulfide Thin Films in the Ammonia‐Thiourea System: In Situ Kinetic Study and Modelization",
+  "expect": "verified",
+  "field": "vacuum",
+  "doi": "10.1149/1.2221111",
+  "journal": "Journal of The Electrochemical Society",
+  "note": "harvested from openalex"
+ },
+ {
+  "title": "Detection of deposition rate of plasma-polymerized acrylate and methacrylate derivatives using quartz crystal microbalance",
+  "expect": "verified",
+  "field": "vacuum",
+  "doi": "10.1016/j.tsf.2003.12.008",
+  "journal": "Thin Solid Films",
+  "note": "harvested from crossref"
+ },
+ {
+  "title": "Recent Advances in Quartz Crystal Microbalance-Based Sensors",
+  "expect": "verified",
+  "field": "vacuum",
+  "doi": "10.1155/2011/571405",
+  "journal": "Journal of Sensors",
+  "note": "harvested from openalex"
+ },
+ {
+  "title": "Nanoassembled Thin-film-coated Quartz Crystal Microbalance Odor Sensors for Environmental and Human Breath Ammonia Assessments",
+  "expect": "verified",
+  "field": "vacuum",
+  "doi": "10.18494/sam.2018.1734",
+  "journal": "Sensors and Materials",
+  "note": "harvested from crossref"
+ },
+ {
+  "title": "Monitoring the growth of titanium oxide thin films by the liquid-phase deposition method with a quartz crystal microbalance",
+  "expect": "verified",
+  "field": "vacuum",
+  "doi": "10.1039/a607466i",
+  "journal": "Journal of Materials Chemistry",
+  "note": "harvested from openalex"
+ },
+ {
+  "title": "Detection of deposition rate of plasma-polymerized silicon-containing films by quartz crystal microbalance",
+  "expect": "verified",
+  "field": "vacuum",
+  "doi": "10.1016/s0040-6090(02)00003-2",
+  "journal": "Thin Solid Films",
+  "note": "harvested from crossref"
+ },
+ {
+  "title": "Growth of ZnO/Al 2 O 3 Alloy Films Using Atomic Layer Deposition Techniques",
+  "expect": "verified",
+  "field": "vacuum",
+  "doi": "10.1021/cm020607+",
+  "journal": "Chemistry of Materials",
+  "note": "harvested from openalex"
+ },
+ {
+  "title": "Evaluating metal–organic frameworks for natural gas storage",
+  "expect": "verified",
+  "field": "mof",
+  "doi": "10.1039/c3sc52633j",
+  "journal": "Chemical Science",
+  "note": "harvested from openalex"
+ },
+ {
+  "title": "H3PW12O40 encapsulation by nanoporous metal organic framework HKUST-1: Synthesis, characterization, activity and stability",
+  "expect": "verified",
+  "field": "mof",
+  "doi": "10.17344/acsi.2016.2236",
+  "journal": "Acta Chimica Slovenica",
+  "note": "harvested from crossref"
+ },
+ {
+  "title": "Biomimetic mineralization of metal-organic frameworks as protective coatings for biomacromolecules",
+  "expect": "verified",
+  "field": "mof",
+  "doi": "10.1038/ncomms8240",
+  "journal": "Nature Communications",
+  "note": "harvested from openalex"
+ },
+ {
+  "title": "Influence of adsorbed gas molecules on thermal transport in metal-organic framework HKUST-1",
+  "expect": "verified",
+  "field": "mof",
+  "doi": "10.1103/physrevapplied.23.054006",
+  "journal": "Physical Review Applied",
+  "note": "harvested from crossref"
+ },
+ {
+  "title": "Metal–organic and covalent organic frameworks as single-site catalysts",
+  "expect": "verified",
+  "field": "mof",
+  "doi": "10.1039/c7cs00033b",
+  "journal": "Chemical Society Reviews",
+  "note": "harvested from openalex"
+ },
+ {
+  "title": "Stability of the adsorption properties of the metal-organic framework HKUST-1",
+  "expect": "verified",
+  "field": "mof",
+  "doi": "10.1007/s11172-022-3403-8",
+  "journal": "Russian Chemical Bulletin",
+  "note": "harvested from crossref"
+ },
+ {
+  "title": "Mixed-metal metal–organic frameworks",
+  "expect": "verified",
+  "field": "mof",
+  "doi": "10.1039/c8cs00337h",
+  "journal": "Chemical Society Reviews",
+  "note": "harvested from openalex"
+ },
+ {
+  "title": "Anomalous strain-dependent thermal conductivity in the metal-organic framework HKUST-1",
+  "expect": "verified",
+  "field": "mof",
+  "doi": "10.1103/physrevb.109.045424",
+  "journal": "Physical Review B",
+  "note": "harvested from crossref"
+ },
+ {
+  "title": "An updated roadmap for the integration of metal–organic frameworks with electronic devices and chemical sensors",
+  "expect": "verified",
+  "field": "mof",
+  "doi": "10.1039/c7cs00122c",
+  "journal": "Chemical Society Reviews",
+  "note": "harvested from openalex"
+ },
+ {
+  "title": "Combining theory and experiment in electrocatalysis: Insights into materials design",
+  "expect": "verified",
+  "field": "dft",
+  "doi": "10.1126/science.aad4998",
+  "journal": "Science",
+  "note": "harvested from openalex"
+ },
+ {
+  "title": "Materials for electrochemical capacitors",
+  "expect": "verified",
+  "field": "dft",
+  "doi": "10.1038/nmat2297",
+  "journal": "Nature Materials",
+  "note": "harvested from openalex"
+ },
+ {
+  "title": "Enhanced Nitrate-to-Ammonia Activity on Copper–Nickel Alloys via Tuning of Intermediate Adsorption",
+  "expect": "verified",
+  "field": "dft",
+  "doi": "10.1021/jacs.9b13347",
+  "journal": "Journal of the American Chemical Society",
+  "note": "harvested from openalex"
+ },
+ {
+  "title": "Balancing surface adsorption and diffusion of lithium-polysulfides on nonconductive oxides for lithium–sulfur battery design",
+  "expect": "verified",
+  "field": "dft",
+  "doi": "10.1038/ncomms11203",
+  "journal": "Nature Communications",
+  "note": "harvested from openalex"
+ },
+ {
+  "title": "Activating lattice oxygen redox reactions in metal oxides to catalyse oxygen evolution",
+  "expect": "verified",
+  "field": "dft",
+  "doi": "10.1038/nchem.2695",
+  "journal": "Nature Chemistry",
+  "note": "harvested from openalex"
+ },
+ {
+  "title": "Optimizing Binding Energies of Key Intermediates for CO 2 Hydrogenation to Methanol over Oxide-Supported Copper",
+  "expect": "verified",
+  "field": "dft",
+  "doi": "10.1021/jacs.6b05791",
+  "journal": "Journal of the American Chemical Society",
+  "note": "harvested from openalex"
+ },
+ {
+  "title": "Enantioselective direct aldol reaction: the blossoming of modern organocatalysis",
+  "expect": "verified",
+  "field": "chem",
+  "doi": "10.1016/j.tetasy.2007.09.025",
+  "journal": "Tetrahedron Asymmetry",
+  "note": "harvested from openalex"
+ },
+ {
+  "title": "Tandem Metal‐ and Organocatalysis in Sequential Hydroformylation and Enantioselective Aldol Reactions",
+  "expect": "verified",
+  "field": "chem",
+  "doi": "10.1002/adsc.200700160",
+  "journal": "Advanced Synthesis & Catalysis",
+  "note": "harvested from openalex"
+ },
+ {
+  "title": "Enhancing the potential of enantioselective organocatalysis with light",
+  "expect": "verified",
+  "field": "chem",
+  "doi": "10.1038/nature25175",
+  "journal": "Nature",
+  "note": "harvested from openalex"
+ },
+ {
+  "title": "Primary amino acids: privileged catalysts in enantioselective organocatalysis",
+  "expect": "verified",
+  "field": "chem",
+  "doi": "10.1039/b803116a",
+  "journal": "Organic & Biomolecular Chemistry",
+  "note": "harvested from openalex"
+ },
+ {
+  "title": "Combination of Enantioselective Metal Catalysis and Organocatalysis: Enantioselective Sequential Hydroformylation/ Aldol Reactions",
+  "expect": "verified",
+  "field": "chem",
+  "doi": "10.1002/adsc.200900780",
+  "journal": "Advanced Synthesis & Catalysis",
+  "note": "harvested from openalex"
+ },
+ {
+  "title": "Development and Applications of Disulfonimides in Enantioselective Organocatalysis",
+  "expect": "verified",
+  "field": "chem",
+  "doi": "10.1021/acs.chemrev.5b00128",
+  "journal": "Chemical Reviews",
+  "note": "harvested from openalex"
+ },
+ {
+  "title": "Genome engineering using the CRISPR-Cas9 system",
+  "expect": "verified",
+  "field": "biomed",
+  "doi": "10.1038/nprot.2013.143",
+  "journal": "Nature Protocols",
+  "note": "harvested from openalex"
+ },
+ {
+  "title": "Double Nicking by RNA-Guided CRISPR Cas9 for Enhanced Genome Editing Specificity",
+  "expect": "verified",
+  "field": "biomed",
+  "doi": "10.1016/j.cell.2013.08.021",
+  "journal": "Cell",
+  "note": "harvested from openalex"
+ },
+ {
+  "title": "Efficient CRISPR/Cas9 genome editing with low off-target effects in zebrafish",
+  "expect": "verified",
+  "field": "biomed",
+  "doi": "10.1242/dev.099085",
+  "journal": "Development",
+  "note": "harvested from openalex"
+ },
+ {
+  "title": "High-fidelity CRISPR–Cas9 nucleases with no detectable genome-wide off-target effects",
+  "expect": "verified",
+  "field": "biomed",
+  "doi": "10.1038/nature16526",
+  "journal": "Nature",
+  "note": "harvested from openalex"
+ },
+ {
+  "title": "CRISPOR: intuitive guide selection for CRISPR/Cas9 genome editing experiments and screens",
+  "expect": "verified",
+  "field": "biomed",
+  "doi": "10.1093/nar/gky354",
+  "journal": "Nucleic Acids Research",
+  "note": "harvested from openalex"
+ },
+ {
+  "title": "The hallmarks of cancer",
+  "expect": "verified",
+  "field": "biomed",
+  "doi": "",
+  "journal": "",
+  "note": "hand-picked; from citation_cases.json"
+ },
+ {
+  "title": "Hallmarks of cancer: the next generation",
+  "expect": "verified",
+  "field": "biomed",
+  "doi": "",
+  "journal": "",
+  "note": "hand-picked; from citation_cases.json"
+ },
+ {
+  "title": "Safety and Efficacy of the BNT162b2 mRNA Covid-19 Vaccine",
+  "expect": "verified",
+  "field": "biomed",
+  "doi": "",
+  "journal": "",
+  "note": "hand-picked; from citation_cases.json"
+ },
+ {
+  "title": "A programmable dual-RNA-guided DNA endonuclease in adaptive bacterial immunity",
+  "expect": "verified",
+  "field": "biomed",
+  "doi": "",
+  "journal": "",
+  "note": "hand-picked; from citation_cases.json"
+ },
+ {
+  "title": "Basic local alignment search tool",
+  "expect": "verified",
+  "field": "biomed",
+  "doi": "",
+  "journal": "",
+  "note": "hand-picked; from citation_cases.json"
+ },
+ {
+  "title": "Initial sequencing and analysis of the human genome",
+  "expect": "verified",
+  "field": "biomed",
+  "doi": "",
+  "journal": "",
+  "note": "hand-picked; from citation_cases.json"
+ },
+ {
+  "title": "Preferred reporting items for systematic reviews and meta-analyses: the PRISMA statement",
+  "expect": "verified",
+  "field": "biomed",
+  "doi": "",
+  "journal": "",
+  "note": "hand-picked; from citation_cases.json"
+ },
+ {
+  "title": "Global cancer statistics 2020: GLOBOCAN estimates of incidence and mortality worldwide for 36 cancers in 185 countries",
+  "expect": "verified",
+  "field": "biomed",
+  "doi": "",
+  "journal": "",
+  "note": "hand-picked; from citation_cases.json"
+ },
+ {
+  "title": "A randomized trial of intensive versus standard blood-pressure control",
+  "expect": "verified",
+  "field": "biomed",
+  "doi": "",
+  "journal": "",
+  "note": "hand-picked; from citation_cases.json"
+ },
+ {
+  "title": "Ileal-lymphoid-nodular hyperplasia, non-specific colitis, and pervasive developmental disorder in children",
+  "expect": "verified",
+  "field": "biomed",
+  "doi": "",
+  "journal": "",
+  "note": "hand-picked; from citation_cases.json"
+ },
+ {
+  "title": "Ultrahigh vacuum thermal decomposition pathways of HKUST-1 thin films probed by in situ Auger spectroscopy",
+  "expect": "not_found",
+  "field": "fabricated",
+  "doi": "",
+  "journal": "",
+  "note": "invented for this suite"
+ },
+ {
+  "title": "Sticking coefficient anisotropy of trimesic acid on Cu(111) measured by quartz crystal microbalance",
+  "expect": "not_found",
+  "field": "fabricated",
+  "doi": "",
+  "journal": "",
+  "note": "invented for this suite"
+ },
+ {
+  "title": "Quantifying copper nanoparticle Ostwald ripening on alumina supports via variable-temperature scanning tunneling microscopy",
+  "expect": "not_found",
+  "field": "fabricated",
+  "doi": "",
+  "journal": "",
+  "note": "invented for this suite"
+ },
+ {
+  "title": "Oxygen-induced faceting of Cu(210) followed by real-time low-energy electron diffraction during isothermal annealing",
+  "expect": "not_found",
+  "field": "fabricated",
+  "doi": "",
+  "journal": "",
+  "note": "invented for this suite"
+ },
+ {
+  "title": "Temperature-programmed desorption evidence for a metastable copper oxycarbonate intermediate on Cu(100)",
+  "expect": "not_found",
+  "field": "fabricated",
+  "doi": "",
+  "journal": "",
+  "note": "invented for this suite"
+ },
+ {
+  "title": "Direct observation of linker scission in UiO-66 thin films by ambient-pressure X-ray photoelectron spectroscopy",
+  "expect": "not_found",
+  "field": "fabricated",
+  "doi": "",
+  "journal": "",
+  "note": "invented for this suite"
+ },
+ {
+  "title": "Sub-monolayer calibration of quartz crystal microbalance response using synchronised Auger uptake curves",
+  "expect": "not_found",
+  "field": "fabricated",
+  "doi": "",
+  "journal": "",
+  "note": "invented for this suite"
+ },
+ {
+  "title": "Anomalous sticking probabilities of copper beta-diketonate precursors on hydroxylated alumina at 400 K",
+  "expect": "not_found",
+  "field": "fabricated",
+  "doi": "",
+  "journal": "",
+  "note": "invented for this suite"
+ },
+ {
+  "title": "Density functional theory of subsurface oxygen incorporation at stepped Cu(322) surfaces",
+  "expect": "not_found",
+  "field": "fabricated",
+  "doi": "",
+  "journal": "",
+  "note": "invented for this suite"
+ },
+ {
+  "title": "Vibrational fingerprints of chemisorbed benzenetricarboxylate on Cu2O(111) from dispersion-corrected DFT",
+  "expect": "not_found",
+  "field": "fabricated",
+  "doi": "",
+  "journal": "",
+  "note": "invented for this suite"
+ },
+ {
+  "title": "Reversible pore collapse in ZIF-8 monoliths tracked by in situ ellipsometric porosimetry",
+  "expect": "not_found",
+  "field": "fabricated",
+  "doi": "",
+  "journal": "",
+  "note": "invented for this suite"
+ },
+ {
+  "title": "Kinetic isotope effects in the thermolysis of copper formate thin films under ultrahigh vacuum",
+  "expect": "not_found",
+  "field": "fabricated",
+  "doi": "",
+  "journal": "",
+  "note": "invented for this suite"
+ },
+ {
+  "title": "Electron-beam-induced reduction of Cu(II) paddlewheel nodes imaged by low-dose transmission electron microscopy",
+  "expect": "not_found",
+  "field": "fabricated",
+  "doi": "",
+  "journal": "",
+  "note": "invented for this suite"
+ },
+ {
+  "title": "Organocatalytic desymmetrisation of prochiral triacids using a bifunctional thiourea-proline scaffold",
+  "expect": "not_found",
+  "field": "fabricated",
+  "doi": "",
+  "journal": "",
+  "note": "invented for this suite"
+ },
+ {
+  "title": "Enantioselective aldol condensation catalysed by copper-loaded metal-organic framework nanocrystals",
+  "expect": "not_found",
+  "field": "fabricated",
+  "doi": "",
+  "journal": "",
+  "note": "invented for this suite"
+ },
+ {
+  "title": "Mitochondrial transfer restores insulin sensitivity in aged human adipocytes",
+  "expect": "not_found",
+  "field": "fabricated",
+  "doi": "",
+  "journal": "",
+  "note": "invented for this suite"
+ },
+ {
+  "title": "Gut microbiome-derived indole propionate attenuates tau hyperphosphorylation in a murine model",
+  "expect": "not_found",
+  "field": "fabricated",
+  "doi": "",
+  "journal": "",
+  "note": "invented for this suite"
+ },
+ {
+  "title": "A single-cell atlas of human pancreatic islet regeneration following partial pancreatectomy",
+  "expect": "not_found",
+  "field": "fabricated",
+  "doi": "",
+  "journal": "",
+  "note": "invented for this suite"
+ },
+ {
+  "title": "CRISPR-mediated deletion of PCSK9 reverses established atherosclerotic plaque in nonhuman primates",
+  "expect": "not_found",
+  "field": "fabricated",
+  "doi": "",
+  "journal": "",
+  "note": "invented for this suite"
+ },
+ {
+  "title": "Quantum coherence in photosynthetic neurons of the human prefrontal cortex",
+  "expect": "not_found",
+  "field": "fabricated",
+  "doi": "",
+  "journal": "",
+  "note": "invented for this suite"
+ },
+ {
+  "title": "Tissue-resident memory T cells drive fibrotic remodeling after repeated sterile lung injury",
+  "expect": "not_found",
+  "field": "fabricated",
+  "doi": "",
+  "journal": "",
+  "note": "invented for this suite"
+ },
+ {
+  "title": "Cryo-electron tomography reveals a helical scaffold coupling chemoreceptor arrays to the flagellar motor",
+  "expect": "not_found",
+  "field": "fabricated",
+  "doi": "",
+  "journal": "",
+  "note": "invented for this suite"
+ }
+]
