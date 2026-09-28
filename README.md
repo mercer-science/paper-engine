@@ -135,23 +135,33 @@ That is the whole install.
 
 ## Keeping It Up to Date
 
-If you installed the plugin, `/plugin update` handles it — but read the caution
-about `/plugin uninstall` at the bottom of this page first.
+**You do not have to remember to check.** Every skill checks at its opening
+step whether GitHub has a newer copy of the engine than the one you installed,
+and if it does, it says so in one line before it starts work. When you are up to
+date it says nothing. It asks GitHub at most once a day and gives up after a few
+seconds, so it never slows a session down, and it compares the exact commit you
+installed rather than a version number, so no update can slip past it. Nothing
+updates itself, and nothing is ever blocked.
 
-If you **cloned** the repository instead, an update is three commands, and the
-third is not optional:
+When it tells you there is an update:
 
-```bash
-git pull
-python tools/install_skills.py install
-python tools/install_skills.py status
-```
+- **Plugin:** run `/plugin update` — but read the caution about
+  `/plugin uninstall` at the bottom of this page first.
+- **Cloned:** the automatic check covers plugin installs; a clone updates with
+  `git pull`, so pull now and then. An update is three commands, and the third
+  is not optional:
 
-The pointers that make the skills findable from any directory go stale on a
-pull that moves a file, and **nothing reports a stale pointer while you work.**
-A harness that cannot resolve a skill does not announce a missing skill — it
-writes the paper without it. `status` is the only thing that will tell you, so
-run it while you are still thinking about the update.
+  ```bash
+  git pull
+  python tools/install_skills.py install
+  python tools/install_skills.py status
+  ```
+
+  `status` is the only thing that reports a skill that stopped being found after
+  a pull moved a file, so run it while you are still thinking about the update.
+
+To ask by hand, the commands are in
+[section 11.1 of the guide](help/instructions.md#111-am-i-behind).
 
 ### Installed Before 2026-09-28?
 
