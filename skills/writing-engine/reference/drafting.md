@@ -1236,7 +1236,7 @@ is the mode (spec 20.1, 21.3):
 | mode | when | what draft-sections does |
 |---|---|---|
 | `compose` | the section is empty: r1 with no rough-draft block, a wiped section, or `--redraft` | write the paragraph from the outline line, the recorded facts and the captions |
-| `edit` | prose exists: a rough-draft block, **or any round after the one that wrote it** | fix mechanics, insert citations, insert `**[FLAG: ...]**`, apply what the reports asked for, and change nothing else |
+| `edit` | prose exists: a rough-draft block, **or any round after the one that wrote it** | fix mechanics, insert citations, insert `**[FLAG: ...]**`, apply what the reports asked for, and change nothing else. **On r2+ nothing is changed to match the outline, captions or analysis** except the proposals the user accepted in `source-review` (`reference/revision.md`) |
 
 Derived per section, never configured, and the plan block prints it. It is one
 mechanism, not a rough-draft feature: an agent told "draft the results" and

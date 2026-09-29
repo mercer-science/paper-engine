@@ -493,6 +493,48 @@ The answer goes to `round_state.json` and **opens the `drafts/log.md` entry** -
 that first clause is the line every good log entry has and no generated entry
 could produce, because the file recorded what was done and never why.
 
+### And Where the Paper Now Differs From the Plan — Ask, Never Apply
+
+**The planning files are checked on r1 only.** `plan/outline.md`,
+`plan/captions.md` and `data/analysis/` are what the first draft is written
+*from*, so on r1 a gap between them and the prose is work. From r2 on the
+paper has been read and edited, and the same comparison is a list of places
+where it has moved away from the plan — usually on purpose. Treating that list
+as work is how a round undid its author's edits: a paragraph the author cut
+still had an outline line, so the drafter put it back.
+
+So on r2+ `completeness` does not list those findings as outstanding. Each one
+becomes a **proposal with an id**, and you put them to the user after the
+intent question and before the plan block:
+
+```bash
+python <tools>/manuscript.py source-review "<project>" --journal X --json
+```
+
+Ask with a **multi-select** — one option per proposal, its detail and file as
+the description, nothing pre-selected. More than four proposals: group them
+by file (outline / captions / analysis) and ask per group, then per item only
+inside a group the user wants. Record the answer:
+
+```bash
+python <tools>/manuscript.py source-review "<project>" --journal X --accept sr-1a2b3c4d,sr-5e6f7a8b --decline all
+```
+
+`--decline all` after an `--accept` declines everything not accepted. An id
+the round did not produce is refused by name. Answers are **per round** — r4
+asks again about whatever still differs.
+
+**Only accepted proposals reach the drafter.** The `draft-sections` brief on
+r2+ says the planning files are not re-applied to EDIT sections, drops the r1
+permission to *add a paragraph for an uncovered outline line*, and lists the
+accepted ids as the round's only work from the plan. An empty list is not an
+error: "nothing is taken from the plan this round" is a normal answer.
+
+**`rearrange` is the exception, and it is the user's.** Answering it means
+*redraft these sections from the outline*, which is the plan applied on
+purpose; it still names its sections through `--redraft`, and nothing else
+about it changes.
+
 ### Offer the round bump here, and let `round` do it
 
 If `submission/manuscript_rN.docx` exists for the open round, this round is

@@ -105,8 +105,7 @@ is sent.
 
 While the banner is there, `status` reports `outline.proposed: true`,
 `completeness` carries a **gap** (never a block — the proposal is a usable
-ledger), and that gap travels into the PAPER NOT COMPLETE block of the built
-`.docx`. **Say it out loud in every verdict you report off a proposed
+ledger), and that gap is on the author's list in `reports/rN/outstanding.md`. **Say it out loud in every verdict you report off a proposed
 outline**: the checks are real, and what they are checked against is not yet
 the user's.
 

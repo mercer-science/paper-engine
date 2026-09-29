@@ -685,6 +685,8 @@ compaction: auto               # auto | ask | off
 #   over     carry the overage for now, keeping all the information; it stays
 #            on the outstanding list and has to be resolved before submission
 #   shorten  cut, and consolidate what will not fit into the supplement
+# The ABSTRACT is not asked about: over its limit, the round cuts it under
+# `ask` and `shorten` alike. Only `over` (or a frozen abstract) carries it.
 
 # Modules you do not want run, every round, whatever the preset. This is the
 # place for "I do not need the citation checker every time" - it composes with
@@ -9453,6 +9455,20 @@ def agent_brief(project: str, module: str,
                  if modes.get(s, {}).get("mode") == "edit"]
                 if module == "revise-prose" else [])
 
+    # Outstanding 1 and 3. What the drafter may still take from the planning
+    # files after r1 (only what the user accepted in source-review), and
+    # what the round fixes without asking (an abstract over its limit). Read
+    # from `completeness` so the brief and the report cannot disagree.
+    plan_rules: dict = {"round": rnd, "accepted": [], "auto_fix": []}
+    if module == "draft-sections" and journal:
+        done = completeness(project, journal)
+        plan_rules["accepted"] = [
+            m for m in done["missing"]
+            if m["detail"].startswith("accepted in source-review")]
+        plan_rules["auto_fix"] = [
+            a for a in done.get("auto_fix") or []
+            if not scope or a["section"] in scope]
+
     if missing:
         warnings.append(
             "not present in this project: %s. The prompt says so rather than "
@@ -9546,6 +9562,9 @@ def agent_brief(project: str, module: str,
         # caller can see that the block in the prompt is the config's own
         # content and not a sentence somebody typed once.
         "style_refs": style_refs if module in STYLE_REF_MODULES else [],
+        # Outstanding 1 and 3: the accepted proposals and the automatic
+        # fixes this brief was told about.
+        "plan_rules": plan_rules if module == "draft-sections" else {},
         "prompt": _agent_prompt(module, spec, given, denied, write_recs,
                                 rnd, weight_lines,
                                 scope if spec.get("scoped_writes") else [],
@@ -9558,7 +9577,9 @@ def agent_brief(project: str, module: str,
                                 in COAUTHOR_GUARDED_MODULES else None,
                                 inputs=inputs,
                                 style_refs=(style_refs if module
-                                            in STYLE_REF_MODULES else None)),
+                                            in STYLE_REF_MODULES else None),
+                                plan_rules=(plan_rules if module
+                                            == "draft-sections" else None)),
         "errors": errors,
         "warnings": warnings,
     }
@@ -9574,7 +9595,8 @@ def _agent_prompt(module: str, spec: dict, given: list[dict],
                   constraints: dict | None = None,
                   guard: dict | None = None,
                   inputs: dict | None = None,
-                  style_refs: list[str] | None = None) -> str:
+                  style_refs: list[str] | None = None,
+                  plan_rules: dict | None = None) -> str:
     """The text handed to the sub-agent, verbatim.
 
     Absolute paths, because the sub-agent does not inherit a working
@@ -9753,21 +9775,73 @@ def _agent_prompt(module: str, spec: dict, given: list[dict],
                              % (s, modes[s]["mode"], modes[s]["why"]))
             lines.append("  COMPOSE means write the paragraph from the "
                          "outline line, the recorded facts and the captions.")
-            lines.append("  EDIT means the prose is already there and is not "
-                         "yours to rewrite: fix the mechanics, insert the "
-                         "citations, insert a **[FLAG: ...]** for anything "
-                         "you cannot verify, apply what the reports asked "
-                         "for, and CHANGE NOTHING ELSE. You may add one new "
-                         "paragraph for an outline line no paragraph "
-                         "implements, at the position the outline gives it, "
-                         "leaving its neighbours untouched - and you must "
-                         "report it as `added from outline line N`.")
+            pr = plan_rules or {}
+            later = pr.get("round", 0) >= 2
+            if not later:
+                lines.append(
+                    "  EDIT means the prose is already there and is not "
+                    "yours to rewrite: fix the mechanics, insert the "
+                    "citations, insert a **[FLAG: ...]** for anything you "
+                    "cannot verify, apply what the reports asked for, and "
+                    "CHANGE NOTHING ELSE. You may add one new paragraph for "
+                    "an outline line no paragraph implements, at the "
+                    "position the outline gives it, leaving its neighbours "
+                    "untouched - and you must report it as `added from "
+                    "outline line N`.")
+            else:
+                # Outstanding 1. The permission above is how a later round
+                # undid its author's edits: a paragraph the author cut
+                # still had an outline line, so the drafter put it back.
+                lines.append(
+                    "  EDIT means the prose is already there and is not "
+                    "yours to rewrite: fix the mechanics, insert the "
+                    "citations, insert a **[FLAG: ...]** for anything you "
+                    "cannot verify, and CHANGE NOTHING ELSE.")
+                lines.append(
+                    "  THIS IS r%d, AND THE PLANNING FILES ARE NOT "
+                    "RE-APPLIED. The outline, the captions and the analysis "
+                    "were what r1 was written from; since then people have "
+                    "read and edited the paper, and where it now differs "
+                    "from those files that is usually on purpose. In an EDIT "
+                    "section do NOT add, move, restore or reword anything to "
+                    "match plan/outline.md, plan/captions.md or "
+                    "data/analysis/ - not a paragraph for an uncovered "
+                    "outline line, not a number to match the analysis - "
+                    "unless it is on the ACCEPTED list below. The outline "
+                    "is still yours to read for a COMPOSE section."
+                    % pr["round"])
+                acc = pr.get("accepted") or []
+                if acc:
+                    lines.append("  ACCEPTED by the user this round - do "
+                                 "these, and report each by its id:")
+                    for m in acc:
+                        lines.append("    - %s   [%s]"
+                                     % (m["detail"], m["where"]))
+                else:
+                    lines.append("  ACCEPTED by the user this round: none. "
+                                 "Nothing is taken from the planning files "
+                                 "into an EDIT section.")
             lines.append("  Every sentence you remove from an EDIT section "
                          "must be listed under a `## Removed` heading in your "
                          "report with a reason. A sentence that vanishes "
                          "without one rejects the whole pass for that "
                          "section and your text is discarded in favour of "
                          "what was there before.")
+            # Outstanding 3. Fixed in the round, not asked about.
+            for a in (plan_rules or {}).get("auto_fix") or []:
+                if a["kind"] == "abstract_length":
+                    lines.append(
+                        "  THE ABSTRACT IS OVER THE JOURNAL'S LIMIT: %d words "
+                        "against %d, so %d must go. Cut it to %d words or "
+                        "fewer in this pass. Keep every number, every "
+                        "citekey and every **[FLAG: ...]**; cut restatement, "
+                        "background the Introduction already carries, and "
+                        "method detail the reader does not need to follow "
+                        "the result. Each removed sentence goes under "
+                        "`## Removed` like any other. The words are counted "
+                        "under `## Abstract` in title_abstract.md, with "
+                        "flags and comments not counted."
+                        % (a["words"], a["limit"], a["over_by"], a["limit"]))
         lines.append("")
     # --- what this round said it is for, and what that forbids (item 89) --
     #
@@ -15496,15 +15570,62 @@ def completeness(project: str, journal: str | None = None) -> dict:
                          if scoped and s not in scoped]
     deferred: list[dict] = []
 
-    def add(area: str, severity: str, detail: str, where: str = "") -> None:
+    # --- what goes INTO the paper, and what does not (outstanding 2) ------
+    #
+    # Every item below is still collected, counted and reported. What changed
+    # is which of them the .docx carries: the block at the end of the paper
+    # is for PROSE THAT IS NOT THERE YET - a section still a stub, an
+    # outlined section with nothing written - and for a figure built from
+    # mock data. Everything else (author details, journal fields, a label
+    # scheme, a graphical abstract nobody sourced) is the author's to-do list
+    # and goes to reports/rN/outstanding.md and the terminal. A draft sent to
+    # coauthors is read by people who will supply those details AFTER they
+    # have read it, and a page of administration at the end of it is a page
+    # they have to be told to ignore.
+    def add(area: str, severity: str, detail: str, where: str = "",
+            doc: bool = False) -> None:
         missing.append({"area": area, "severity": severity, "detail": detail,
-                        "where": where})
+                        "where": where, "in_document": doc})
 
     def defer(area: str, section: str, severity: str, detail: str,
               where: str = "") -> None:
         deferred.append({"area": area, "section": section,
                          "severity": severity, "detail": detail,
                          "where": where})
+
+    # --- the planning files are checked on the first round only (1) ------
+    #
+    # On r1 the outline, the captions and the analysis are what the prose is
+    # rendered FROM, and a gap between them and the draft is work. From r2 on
+    # the prose has been read and edited by people, and the same comparison
+    # is a list of places where the paper has moved away from the plan -
+    # often on purpose. Handing that list to the drafter as work is how a
+    # round undid its author's edits by "following the outline". So after r1
+    # each such finding is a PROPOSAL: listed, given an id, and put to the
+    # user, and only the ones they pick become work (`source-review`).
+    first_round = (not journal
+                   or build_round(journal_dir(project, journal)) <= 1)
+    # Things the round resolves by itself rather than asks about (3).
+    auto_fix: list[dict] = []
+    review_rec = (source_review_record(journal_dir(project, journal))
+                  if journal and not first_round else {})
+    review: list[dict] = []
+
+    def source(area: str, rule: str, detail: str, where: str = "",
+               doc: bool = False) -> None:
+        """A finding that compares the prose against a planning file."""
+        if first_round:
+            add(area, "gap", detail, where, doc)
+            return
+        rid = source_review_id(rule, where, detail)
+        if rid in review_rec.get("declined", []):
+            return
+        if rid in review_rec.get("accepted", []):
+            add(area, "gap", "accepted in source-review (%s): %s"
+                % (rid, detail), where)
+            return
+        review.append({"id": rid, "area": area, "rule": rule,
+                       "detail": detail, "where": where})
 
     # --- the outline, which is the claims ledger --------------------------
     # Out of scope skips the whole block rather than running it on an absent
@@ -15580,12 +15701,12 @@ def completeness(project: str, journal: str | None = None) -> dict:
             if (sec := out_of_round(f["location"])):
                 defer("outline", sec, "gap", detail, f["location"])
             else:
-                add("outline", "gap", detail, f["location"])
+                source("outline", f["rule"], detail, f["location"])
         for f in unreadable + unresolved:
             if (sec := out_of_round(f["location"])):
                 defer("outline", sec, "gap", f["detail"], f["location"])
             else:
-                add("outline", "gap", f["detail"], f["location"])
+                source("outline", f["rule"], f["detail"], f["location"])
         for s in outline.get("sections", []):
             if s["outline_lines"] and not s["paragraphs"]:
                 detail = (f"{s['section']} has {s['outline_lines']} outline "
@@ -15594,7 +15715,13 @@ def completeness(project: str, journal: str | None = None) -> dict:
                 if s["section"] in deferred_sections:
                     defer("draft", s["section"], "gap", detail, where)
                 else:
-                    add("draft", "gap", detail, where)
+                    # Missing prose, so it is one of the few items the
+                    # document carries - on r1. After that a section with
+                    # prose in it and no paragraph matching the outline is a
+                    # section the author rewrote, and the stub check below
+                    # still catches one that is genuinely empty.
+                    source("draft", "outline_section_unwritten", detail,
+                           where, doc=True)
 
     # --- does this review know what its sections ARE (review-paper 7) ----
     #
@@ -15626,7 +15753,7 @@ def completeness(project: str, journal: str | None = None) -> dict:
                       f"{stpfx(project)}{s}.md")
             else:
                 add("draft", "gap", f"{s} is still a stub",
-                    f"{stpfx(project)}{s}.md")
+                    f"{stpfx(project)}{s}.md", doc=True)
 
     # --- who wrote it, and what each of them did --------------------------
     # Not scoped by `manages`: every project that submits a paper has an
@@ -15641,9 +15768,13 @@ def completeness(project: str, journal: str | None = None) -> dict:
     if "floats" in managed:
         caps = _prose(project, "captions")
         for f in caps.get("findings", []):
-            if f["rule"] in ("no_claim_subtitle", "float_never_cited",
-                             "reference_to_missing_float"):
+            # A callout to a float that does not exist is a defect in the
+            # paper whatever the round. The other two compare the text
+            # against captions.md, which is a planning file.
+            if f["rule"] == "reference_to_missing_float":
                 add("floats", "gap", f["detail"], f["location"])
+            elif f["rule"] in ("no_claim_subtitle", "float_never_cited"):
+                source("floats", f["rule"], f["detail"], f["location"])
 
         # The files, not the prose: a caption for a figure nobody drew, a
         # folder nobody captioned, and - where the journal said how - an
@@ -15717,9 +15848,11 @@ def completeness(project: str, journal: str | None = None) -> dict:
         prov = {}
     mock = sorted(k for k, v in prov.items()
                   if isinstance(v, dict) and v.get("mock"))
+    # In the document, and the one non-prose item that is: a coauthor reading
+    # a figure has no other way to learn it is invented.
     for m in mock:
         add("floats", "blocking", f"{m} is built from mock data",
-            "plan/figures/")
+            "plan/figures/", doc=True)
 
     # --- statistics -------------------------------------------------------
     if "analysis" not in managed:
@@ -15736,9 +15869,11 @@ def completeness(project: str, journal: str | None = None) -> dict:
         nums = _prose(project, "numbers")
         bad = [f for f in nums.get("findings", [])
                if f["rule"] == "not_recorded" and f["severity"] == "error"]
-        for f in bad[:8]:
-            add("analysis", "gap", f["detail"], f["location"])
-        if len(bad) > 8:
+        # Every one on a later round: each is its own proposal, and "...and
+        # 14 more" is not something a person can pick from.
+        for f in (bad[:8] if first_round else bad):
+            source("analysis", f["rule"], f["detail"], f["location"])
+        if first_round and len(bad) > 8:
             add("analysis", "gap",
                 f"...and {len(bad) - 8} more numbers with no recorded source",
                 stpfx(project))
@@ -15765,10 +15900,10 @@ def completeness(project: str, journal: str | None = None) -> dict:
                 continue
             if all(v in drafted for v in m["values"]):
                 continue
-            add("analysis", "gap",
-                "marked [must appear] in analysis.md and not in the draft: "
-                + (m["label"][:90] or ", ".join(m["values"])),
-                "data/analysis/analysis.md")
+            source("analysis", "must_appear",
+                   "marked [must appear] in analysis.md and not in the draft: "
+                   + (m["label"][:90] or ", ".join(m["values"])),
+                   "data/analysis/analysis.md")
 
     # --- prefilled methods facts nobody has confirmed ---------------------
     #
@@ -15877,9 +16012,39 @@ def completeness(project: str, journal: str | None = None) -> dict:
             if m and str(req.get(key, "")).strip() != "unknown":
                 largs += ["--limit", f"{scope}={m.group(0)}"]
         lres = _prose(project, "length", "--policy", policy, *largs)
+        # An abstract over its limit is FIXED, not asked about (outstanding
+        # 3). The body's overage is a real decision - cutting before the
+        # science settles throws away material - but an abstract 19 words
+        # over has one answer, and asking it every round is a question the
+        # user has already answered by having a limit. Two things turn it
+        # back into a question: `length_policy: over`, which is the user
+        # saying "carry it", and a frozen abstract, which is the user saying
+        # "this is mine".
+        abstract_over = next((o for o in lres.get("over", []) or []
+                              if o.get("scope") == "abstract"), None)
+        abstract_frozen = "title_abstract" in (
+            load_frozen(project).get("frozen") or [])
+        if abstract_over and policy != "over" and not abstract_frozen:
+            auto_fix.append({
+                "kind": "abstract_length", "section": "title_abstract",
+                "words": abstract_over["words"],
+                "limit": abstract_over["limit"],
+                "over_by": abstract_over["over_by"]})
         for f in lres.get("findings", []):
             if f["rule"] == "no_word_limit_sourced":
                 continue             # already counted as an unknown requirement
+            if (f["rule"] == "over_word_limit" and auto_fix
+                    and f["detail"].startswith("abstract ")
+                    and any(a["kind"] == "abstract_length" for a in auto_fix)):
+                a = auto_fix[-1]
+                add("length", "gap",
+                    "abstract is %d words against a %d-word limit - %d over. "
+                    "The round shortens it (draft-sections is told to cut it "
+                    "to the limit, keeping every number and citekey); set "
+                    "length_policy: over to carry it instead"
+                    % (a["words"], a["limit"], a["over_by"]),
+                    f["location"])
+                continue
             add("length", "gap", f["detail"], f["location"])
 
         unknown = sorted(k for k, v in req.items() if v == "unknown")
@@ -15957,8 +16122,12 @@ def completeness(project: str, journal: str | None = None) -> dict:
                     % (i["id"], i["source"], i["text"][:120]), where)
 
         # Item 150: the supplement uses the journal's labels, like the text.
+        # `assemble` relabels them before it gets here (outstanding 3), so a
+        # finding that survives to this point is one the rewrite could not
+        # reach - reported, never in the document.
         for c in supplement_label_findings(project, req):
-            add("supplement", "gap", c["detail"],
+            add("supplement", "gap", c["detail"]
+                + " - `assemble` relabels these to the journal's scheme",
                 stpfx(project) + c["file"] + ".md")
         # Item 149: a required statement the journal's own order has no slot
         # for is left out of the build rather than given a heading - so it is
@@ -16068,6 +16237,16 @@ def completeness(project: str, journal: str | None = None) -> dict:
                    "checked on this build."
                    % ", ".join("prose.py " + f["cmd"] for f in checks_not_run))
 
+    # Proposals are not gaps - nothing is outstanding until the user picks
+    # one - but a verdict that stayed silent about them would read as "the
+    # planning files agree with the paper", which is not what it means.
+    if review:
+        caveat += (" %d difference%s between the paper and the planning "
+                   "files %s waiting for you to choose which to apply "
+                   "(`manuscript.py source-review`); none is applied until "
+                   "you do." % (len(review), "" if len(review) == 1 else "s",
+                                "is" if len(review) == 1 else "are"))
+
     if not complete:
         head = (f"PAPER NOT COMPLETE - {len(missing)} outstanding "
                 f"across {', '.join(sorted(by_area))}.")
@@ -16105,8 +16284,125 @@ def completeness(project: str, journal: str | None = None) -> dict:
         # or not it moved the verdict. A consumer that wants to know what was
         # actually checked reads this rather than inferring it from silence.
         "checks_not_run": checks_not_run,
+        # Outstanding 1-3. Whether this is r1, the proposals from the
+        # planning files a later round puts to the user, what the round
+        # fixes by itself, and how many items the .docx itself carries.
+        "first_round": first_round,
+        "source_review": review,
+        "auto_fix": auto_fix,
+        "in_document": sum(1 for m in missing if m.get("in_document")),
         "summary": head + caveat,
     }
+
+
+# --- source review: the planning files after r1 (outstanding 1) -----------
+#
+# A finding's id is a hash of what it says and where, so the same finding
+# keeps its id across invocations and the answer the user gave stays attached
+# to it. The record is per round: an answer given on r3 is about r3's paper,
+# and r4 asks again about whatever is still different.
+SOURCE_REVIEW_KEY = "source_review"
+
+
+def source_review_id(rule: str, where: str, detail: str) -> str:
+    raw = "\x1f".join((rule, where, " ".join(detail.split())))
+    return "sr-" + hashlib.sha256(raw.encode("utf-8")).hexdigest()[:8]
+
+
+def source_review_record(jdir: str) -> dict:
+    """This round's answers, or empty ones if the record is another round's."""
+    rec = round_state(jdir).get(SOURCE_REVIEW_KEY) or {}
+    if not isinstance(rec, dict) or rec.get("round") != build_round(jdir):
+        return {"round": build_round(jdir), "accepted": [], "declined": []}
+    return {"round": rec.get("round"),
+            "accepted": list(rec.get("accepted") or []),
+            "declined": list(rec.get("declined") or [])}
+
+
+def source_review(project: str, journal: str,
+                  accept: list[str] | None = None,
+                  decline: list[str] | None = None) -> dict:
+    """List the differences a later round found, and record the user's pick.
+
+    `accept`/`decline` take ids or `all`. An id this round did not produce is
+    refused by name rather than recorded, because an answer attached to
+    nothing is an answer that silently does nothing.
+    """
+    jdir = journal_dir(project, journal)
+    if not os.path.isdir(jdir):
+        return {"errors": ["no journal folder at %s; run init first" % jdir],
+                "items": []}
+    rnd = build_round(jdir)
+    rec = source_review_record(jdir)
+    if rnd <= 1:
+        return {"errors": [], "round": rnd, "items": [], "recorded": rec,
+                "note": "r1 checks the planning files directly - the outline "
+                        "is what the first draft is written from, so its gaps "
+                        "are work, not proposals. Nothing to choose."}
+    res = completeness(project, journal)
+    items = res.get("source_review") or []
+    ids = {i["id"] for i in items}
+    known = ids | set(rec["accepted"]) | set(rec["declined"])
+    errors: list[str] = []
+
+    def resolve(chosen: list[str] | None) -> list[str]:
+        out: list[str] = []
+        for c in chosen or []:
+            c = c.strip()
+            if not c:
+                continue
+            if c == "all":
+                out += sorted(ids)
+            elif c in known:
+                out.append(c)
+            else:
+                errors.append("%s is not a finding this round produced; run "
+                              "`source-review` without flags to list them" % c)
+        return out
+
+    acc, dec = resolve(accept), resolve(decline)
+    if errors:
+        return {"errors": errors, "round": rnd, "items": items,
+                "recorded": rec}
+    if acc or dec:
+        rec["accepted"] = sorted((set(rec["accepted"]) | set(acc)) - set(dec))
+        rec["declined"] = sorted((set(rec["declined"]) | set(dec)) - set(acc))
+        rec["round"] = rnd
+        update_round_state(jdir, **{SOURCE_REVIEW_KEY: rec})
+        items = [i for i in items if i["id"] not in acc and i["id"] not in dec]
+    return {"errors": [], "round": rnd, "items": items, "recorded": rec,
+            "note": ("%d difference%s between the paper and plan/, captions "
+                     "or analysis. The paper was edited after r1, so each is "
+                     "put to you rather than applied: accept the ones the "
+                     "round should act on, decline the rest."
+                     % (len(items), "" if len(items) == 1 else "s"))
+                    if items else
+                    "nothing waiting - every difference found has an answer"}
+
+
+def accepted_source_items(project: str, journal: str) -> list[dict]:
+    """The accepted proposals, as the drafter's brief states them."""
+    jdir = journal_dir(project, journal)
+    if build_round(jdir) <= 1:
+        return []
+    return [m for m in completeness(project, journal)["missing"]
+            if m["detail"].startswith("accepted in source-review")]
+
+
+def print_source_review(res: dict) -> None:
+    for e in res.get("errors") or []:
+        print("  REFUSED  %s" % e)
+    if res.get("errors"):
+        return
+    print("  r%d - %s" % (res.get("round", 0), res.get("note", "")))
+    for i in res.get("items") or []:
+        print("  %s  %-8s %s   [%s]"
+              % (i["id"], i["area"], i["detail"], i["where"]))
+    rec = res.get("recorded") or {}
+    if rec.get("accepted") or rec.get("declined"):
+        print("  recorded: %d accepted, %d declined"
+              % (len(rec.get("accepted") or []),
+                 len(rec.get("declined") or [])))
 
 
 def render_incomplete_block(res: dict, journal: str, rnd: int) -> str:
@@ -16116,8 +16412,15 @@ def render_incomplete_block(res: dict, journal: str, rnd: int) -> str:
     because the reader who most needs it is the coauthor who opened the .docx
     and never saw the terminal.
     """
-    deferred = res.get("deferred") or []
-    if res["complete"] and not deferred:
+    # Outstanding 2. Only what a READER of the draft needs to know is in it:
+    # prose that is not written yet, and a figure made of mock data. The
+    # author's to-do list - author details, journal fields, label schemes,
+    # the graphical abstract - is in reports/rN/outstanding.md, because a
+    # draft goes to coauthors before any of that is settled, and they are the
+    # people who will settle it.
+    shown = [m for m in res["missing"] if _in_document(m)]
+    deferred = [d for d in (res.get("deferred") or []) if d["area"] == "draft"]
+    if not shown and not deferred:
         return ""
     lines = [
         "",
@@ -16125,21 +16428,21 @@ def render_incomplete_block(res: dict, journal: str, rnd: int) -> str:
         "",
         "## **[FLAG: incomplete — PAPER NOT COMPLETE]**",
         "",
-        f"**This is a working draft of {journal} r{rnd}, not a finished "
-        f"paper.** "
-        + (f"{len(res['missing'])} things are still outstanding"
-           if res["missing"] else
-           "Nothing this round was for is outstanding")
-        + (f", and {len(deferred)} more are deferred to a later round"
-           if deferred and res["missing"] else "")
-        + ". It was built deliberately in this state so the written parts can "
+        f"**This is a working draft of {journal} r{rnd}.** "
+        + (f"{len(shown)} part{'s' if len(shown) != 1 else ''} of it "
+           f"{'are' if len(shown) != 1 else 'is'} not finished yet"
+           if shown else "Everything this round was for is written")
+        + (f", and {len(deferred)} more "
+           f"{'are' if len(deferred) != 1 else 'is'} left for a later round"
+           if deferred else "")
+        + ". It was built in this state on purpose so the written parts can "
           "be read and edited now; nothing below has been guessed at or "
           "filled in.",
     ]
-    if res["missing"]:
-        lines += ["", "| what is missing | where |", "|---|---|"]
+    if shown:
+        lines += ["", "| What Is Missing | Where |", "|---|---|"]
     order = {"blocking": 0, "gap": 1}
-    for m in sorted(res["missing"],
+    for m in sorted(shown,
                     key=lambda x: (order.get(x["severity"], 2), x["area"])):
         mark = "**must fix**" if m["severity"] == "blocking" else ""
         detail = m["detail"].replace("|", "\\|")
@@ -16163,37 +16466,94 @@ def render_incomplete_block(res: dict, journal: str, rnd: int) -> str:
             + ", which nobody has drafted or checked yet — they are not "
               "defects in what you are reading.",
             "",
-            "| deferred to a later round | where |",
+            "| Deferred to a Later Round | Where |",
             "|---|---|",
         ]
         for d in sorted(deferred, key=lambda x: (x["section"], x["area"])):
             detail = d["detail"].replace("|", "\\|")
             where = (d["where"] or "").replace("|", "\\|")
             lines.append(f"| {detail} | `{where}` |")
-    # What was NOT checked belongs in the coauthor's copy too. A short table on
-    # a manuscript-only project reads as "nearly finished" when it may mean
-    # "the figures and the statistics were never looked at" - and the reader of
-    # this block is exactly the person with no way to know which.
-    # Only the `manages` half: a section deferred by this round's scope has
-    # its own table above, and it is not managed elsewhere - it is this
-    # project's, later.
-    elsewhere = [s for s in (res.get("out_of_scope") or [])
-                 if s.get("kind", "manages") == "manages"]
-    if elsewhere:
-        lines += [
-            "",
-            "**Not checked in this build**, because this project does not keep "
-            "them: " + "; ".join(f"{s['area']} ({s['owns']})"
-                                 for s in elsewhere)
-            + ". They are managed elsewhere — see `manages` in "
-              "`writing_config.yml`.",
-        ]
+    # What was NOT checked (`manages`) used to be printed here too. It is a
+    # fact about how this project is kept, not about the draft, so it moved
+    # with the rest of the to-do list to reports/rN/outstanding.md.
     lines += [
         "",
         "*This block is generated. It disappears from the build by itself once "
         "the list above is empty — do not delete it by hand.*",
         "",
     ]
+    return "\n".join(lines)
+
+
+def _in_document(m: dict) -> bool:
+    """Does this outstanding item belong in the .docx (outstanding 2)?
+
+    Read off the item where `completeness` tagged it; an item built by hand
+    without the tag (an older caller, a test) counts as prose when its area
+    is `draft`, which is what the tag means.
+    """
+    if "in_document" in m:
+        return bool(m["in_document"])
+    return m.get("area") == "draft"
+
+
+def render_outstanding_report(res: dict, journal: str, rnd: int) -> str:
+    """reports/rN/outstanding.md - the author's to-do list, in full.
+
+    Everything `completeness` found, including what the .docx carries, so
+    this is the one list to work from. Written by every build that has
+    anything on it, and removed by one that has nothing.
+    """
+    lines = ["# Outstanding for %s r%d" % (journal, rnd), "",
+             res.get("summary", ""), ""]
+    order = {"blocking": 0, "gap": 1}
+    if res.get("missing"):
+        lines += ["## Still to Do", "",
+                  "| | Area | What | Where | In the .docx |",
+                  "|---|---|---|---|---|"]
+        for m in sorted(res["missing"], key=lambda x: (
+                order.get(x["severity"], 2), x["area"])):
+            lines.append("| %s | %s | %s | `%s` | %s |" % (
+                "**must fix**" if m["severity"] == "blocking" else "",
+                m["area"], m["detail"].replace("|", "\\|"),
+                (m["where"] or "").replace("|", "\\|"),
+                "yes" if _in_document(m) else ""))
+        lines.append("")
+    if res.get("auto_fix"):
+        lines += ["## Fixed by the Round, Not Asked About", ""]
+        for a in res["auto_fix"]:
+            if a["kind"] == "abstract_length":
+                lines.append("- the abstract is %d words against %d; "
+                             "draft-sections cuts it to the limit. Set "
+                             "`length_policy: over` to carry it instead."
+                             % (a["words"], a["limit"]))
+        lines.append("")
+    if res.get("source_review"):
+        lines += ["## Waiting for Your Choice", "",
+                  "The paper has been edited since r1, so where it differs "
+                  "from the outline, the captions or the analysis nothing is "
+                  "changed until you pick. `manuscript.py source-review "
+                  "<project> --journal %s --accept <ids>` (or `--decline`)."
+                  % journal, "",
+                  "| Id | Area | Difference | Where |", "|---|---|---|---|"]
+        for i in res["source_review"]:
+            lines.append("| `%s` | %s | %s | `%s` |" % (
+                i["id"], i["area"], i["detail"].replace("|", "\\|"),
+                (i["where"] or "").replace("|", "\\|")))
+        lines.append("")
+    if res.get("deferred"):
+        lines += ["## Deferred to a Later Round", ""]
+        for d in res["deferred"]:
+            lines.append("- %s (`%s`)" % (d["detail"], d["where"]))
+        lines.append("")
+    elsewhere = [s for s in (res.get("out_of_scope") or [])
+                 if s.get("kind", "manages") == "manages"]
+    if elsewhere:
+        lines += ["## Not Checked in This Build", "",
+                  "This project does not keep these, so nothing here checked "
+                  "them: " + "; ".join("%s (%s)" % (s["area"], s["owns"])
+                                       for s in elsewhere)
+                  + ". See `manages` in `writing_config.yml`.", ""]
     return "\n".join(lines)
 
 
@@ -19082,6 +19442,61 @@ def supplement_label_findings(project: str, req: dict) -> list[dict]:
     return out
 
 
+# Outstanding 3. The label scheme is a lookup with one right answer - the
+# journal says `Table E1`, the text says `Table S1` - so `assemble` rewrites
+# it rather than listing it at the end of the paper for somebody to do by
+# hand. A label run is relabelled whole: `Figs. S1 and S2`, `Tables S1-S3`.
+SUPP_LABEL_RUN_RE = re.compile(
+    r"\b((?:Tables?|Figures?|Figs?\.)\s+)"
+    r"(S\d+[A-Za-z]?(?:\s*(?:,|and|&|–|-|to)\s*S?\d+[A-Za-z]?)*)")
+
+
+def fix_supplement_labels(project: str, req: dict,
+                          dry_run: bool = False) -> list[dict]:
+    """Relabel supplementary floats to the journal's scheme, in place.
+
+    Only the letter changes and only inside a float callout, so a number, a
+    citekey or a flag can never be touched. Comments are left alone: they are
+    instructions, not text. Returns one record per file changed.
+    """
+    naming = req.get("supplementary.naming") or ""
+    m = re.search(r"\b(?:Table|Figure|Fig\.)\s+([A-Z])1\b", naming)
+    want = m.group(1) if m else ""
+    if not want or want == "S":
+        return []
+    st = source_text_dir(project)
+    done: list[dict] = []
+    for stem in section_files(project) + [SUPPLEMENT_STEM, "live_captions"]:
+        p = os.path.join(st, stem + ".md")
+        if not os.path.isfile(p):
+            continue
+        raw = _read(p)
+        changed: list[str] = []
+
+        def relabel(mm: "re.Match[str]") -> str:
+            new = re.sub(r"\bS(\d)", want + r"\1", mm.group(2))
+            if new != mm.group(2):
+                changed.append("%s%s -> %s%s" % (mm.group(1), mm.group(2),
+                                                 mm.group(1), new))
+            return mm.group(1) + new
+
+        # Split on comments so an instruction inside <!-- --> is never
+        # rewritten; the odd pieces are the comments themselves.
+        pieces = re.split(r"(<!--.*?-->)", raw, flags=re.S)
+        out = "".join(pc if i % 2 else SUPP_LABEL_RUN_RE.sub(relabel, pc)
+                      for i, pc in enumerate(pieces))
+        if out != raw:
+            if not dry_run:
+                _write(p, out)
+            done.append({"file": stem, "changes": changed,
+                         "detail": "%s.md: %d supplementary label%s set to "
+                                   "the journal's scheme (%s)"
+                                   % (stem, len(changed),
+                                      "" if len(changed) == 1 else "s",
+                                      "; ".join(sorted(set(changed))[:3]))})
+    return done
+
+
 def _carries_caption(body: str, label: str) -> bool:
     lab = re.escape(label)
     return bool(re.search(r"^(?:#{1,6}[ \t]+|\*\*)%s\b" % lab, body, re.M))
@@ -19450,6 +19865,14 @@ def assemble(project: str, journal: str, allow_mock: bool = False,
     # is in: the gates delete the partial output, and without staging a failed
     # rebuild would delete the round's last good manuscript with it.
     stage_docx = os.path.join(jdir, f".build_r{rnd}{suffix}.docx")
+
+    # --- the journal's supplementary label scheme (outstanding 3) --------
+    # Before anything reads the source text, so the manuscript, the
+    # supplement and the captions are built from the same labels. A dry run
+    # says what it would change and changes nothing.
+    for c in fix_supplement_labels(project, req, dry_run):
+        warnings.append(("would relabel " if dry_run else "relabelled ")
+                        + c["detail"])
 
     # --- the build file ---------------------------------------------------
     order, order_note = section_order(req, section_files(project))
@@ -19878,21 +20301,38 @@ def assemble(project: str, journal: str, allow_mock: bool = False,
     # An unfinished paper still builds - that is the point (see completeness()
     # above). What it does not do is leave the folder looking finished.
     done = completeness(project, journal)
-    if not done["complete"] or done.get("deferred"):
-        # A scoped round can come back clean and still be a partial paper.
-        # The block is what says so inside the file, and it is the only thing
-        # a coauthor opening the .docx will read (item 39).
-        # The block is GENERATED, which makes it the one part of a blinded
-        # build nobody proof-reads - and it said an author's name out loud
-        # (item 129). Redacted rather than suppressed: the coauthor who
-        # opened the .docx still needs to know the paper is unfinished.
-        blk = render_incomplete_block(done, folder, rnd)
+    # The full list goes to the author, in a file and in the terminal
+    # (outstanding 2). It is written whenever there is anything on it and
+    # removed when there is not, so a stale list never outlives its work.
+    out_md = os.path.join(jdir, "reports", "r%d" % rnd, "outstanding.md")
+    has_list = (not done["complete"] or done.get("deferred")
+                or done.get("source_review"))
+    if not dry_run:
+        if has_list:
+            _write(out_md, render_outstanding_report(done, folder, rnd))
+        elif os.path.isfile(out_md):
+            os.remove(out_md)
+    blk = render_incomplete_block(done, folder, rnd)
+    if blk:
+        # Only when prose is missing or a figure is mock data - the two
+        # things a coauthor reading the draft must not mistake for finished
+        # (item 39). The block is GENERATED, which makes it the one part of
+        # a blinded build nobody proof-reads - and it said an author's name
+        # out loud (item 129). Redacted rather than suppressed.
         add(blind_text(blk, _blind_names(project),
                        _blind_filler(req)) if blind else blk)
+    if has_list:
+        rel = os.path.relpath(out_md, project).replace(os.sep, "/")
         warnings.append(
-            done["summary"] + " The build carries a PAPER NOT COMPLETE block "
-            "at the end listing every item, so nobody reading the .docx has to "
-            "take it for finished.")
+            done["summary"] + (
+                " The .docx carries a PAPER NOT COMPLETE block for the %d "
+                "part%s not written yet; the full list is in %s."
+                % (done.get("in_document", 0),
+                   "" if done.get("in_document", 0) == 1 else "s", rel)
+                if blk else
+                " None of it is missing prose, so the .docx carries no "
+                "block and can go to coauthors as it is; the full list is "
+                "in %s." % rel))
 
     if scoped:
         warnings.append(
@@ -24791,6 +25231,17 @@ def main() -> int:
     done.add_argument("project")
     done.add_argument("--journal", default=None)
 
+    srv = sub.add_parser("source-review", parents=[common],
+                         help="after r1: where the paper differs from the "
+                              "outline, captions or analysis, and which of "
+                              "those differences the round should act on")
+    srv.add_argument("project")
+    srv.add_argument("--journal", required=True)
+    srv.add_argument("--accept", default="",
+                     help="comma-separated ids, or `all`")
+    srv.add_argument("--decline", default="",
+                     help="comma-separated ids, or `all`")
+
     ff = sub.add_parser("figure-files", parents=[common],
                         help="every captioned float drawn, every drawn float "
                              "captioned, and the uploads named the journal's "
@@ -25313,6 +25764,14 @@ def main() -> int:
         if res["errors"]:
             return 2
         return 1 if res.get("error_count") else 0
+
+    if args.cmd == "source-review":
+        res = source_review(args.project, args.journal,
+                            accept=args.accept.split(","),
+                            decline=args.decline.split(","))
+        print(json.dumps(res, indent=2, ensure_ascii=False)) if as_json \
+            else print_source_review(res)
+        return 2 if res.get("errors") else 0
 
     if args.cmd == "completeness":
         res = completeness(args.project, args.journal)

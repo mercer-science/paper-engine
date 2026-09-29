@@ -3197,11 +3197,17 @@ def test_manages_scope(tmp: str) -> None:
     check("a full project's summary says no such thing",
           "Not checked here" in full["summary"], False)
 
+    # Reversed 2026-09-28 (outstanding 2): what this project does not keep
+    # is a fact about the project for its author, not about the draft for a
+    # coauthor, so it is in reports/rN/outstanding.md and not in the .docx.
     block = ms.render_incomplete_block(trimmed, "Langmuir", 1)
-    check("the .docx block names them too - the coauthor never saw a terminal",
-          "Not checked in this build" in block, True)
+    check("the .docx block does NOT carry what is managed elsewhere",
+          "Not checked in this build" in block, False)
+    report = ms.render_outstanding_report(trimmed, "Langmuir", 1)
+    check("...the author's report does",
+          "Not Checked in This Build" in report, True)
     check("...and points at the key that decided it",
-          "writing_config.yml" in block, True)
+          "writing_config.yml" in report, True)
 
     # The one check that is NOT scoped away. Mock data reaching a coauthor is
     # the failure this pipeline is most careful about, and a provenance
@@ -8237,8 +8243,11 @@ def test_summary_matches_the_document(tmp: str) -> None:
     check("...with that number's own scope stated",
           "source_text" in (res.get("prose_words_counted") or ""), True,
           repr(res.get("prose_words_counted")))
+    # `!=`, not `<`: the rendered count used to be the larger only because
+    # the PAPER NOT COMPLETE block was in it, and since 2026-09-28 a paper
+    # with every section written carries no block (outstanding 2).
     check("...and they really are different counts of the same build",
-          res["prose_words"] < res["words"], True,
+          res["prose_words"] != res["words"], True,
           "%s vs %s" % (res.get("prose_words"), res.get("words")))
 
     # Item 11: a flag written across two paragraphs is not bold - pandoc
@@ -8941,8 +8950,8 @@ def test_round_scope_reaches_completeness(tmp: str) -> None:
          "out_of_scope": []}, "LANGMUIR", 1)
     check("a clean scoped round still carries a block in the .docx",
           "Deferred, not missing" in block, True)
-    check("...and it says nothing this round was for is outstanding",
-          "Nothing this round was for is outstanding" in block, True)
+    check("...and it says everything this round was for is written",
+          "Everything this round was for is written" in block, True)
 
     # --- clearing the scope puts them back --------------------------------
     ms.record_round_scope(jdir, [])
@@ -11398,9 +11407,15 @@ def test_how_it_reads_reaches_the_build(tmp: str) -> None:
           "exploded on purpose" in named[0]["detail"], True, named[0])
     check("...and the payload carries it as a check that did not run",
           [f["cmd"] for f in crashed_xref["checks_not_run"]], ["crossrefs"])
-    check("...and the coauthor's own block says so",
+    # Reversed 2026-09-28 (outstanding 2): a check that did not run is an
+    # engine fault for the author, not a fact about the draft for a
+    # coauthor. It is in the author's report and NOT in the .docx.
+    check("...and the author's report says so",
           "prose.py crossrefs" in
-          ms.render_incomplete_block(crashed_xref, "Langmuir", 1), True)
+          ms.render_outstanding_report(crashed_xref, "Langmuir", 1), True)
+    check("...and the coauthor's .docx block does not",
+          "prose.py crossrefs" in
+          ms.render_incomplete_block(crashed_xref, "Langmuir", 1), False)
 
     # A reading check that did not run does NOT block - nothing about how the
     # prose reads ever may (item 81) - but it is still named, in the summary
@@ -13347,6 +13362,146 @@ def _para_seq(doc: str) -> list[tuple[str, str]]:
     return out
 
 
+def test_outstanding_and_source_review(tmp: str) -> None:
+    """The outstanding list, source review after r1, and the automatic fixes."""
+    section("Outstanding list, source review after r1, and the automatic fixes")
+    root = os.path.join(tmp, "outstanding")
+    run = subprocess.run(
+        [sys.executable, os.path.join(ROOT, "tools", "scaffold.py"),
+         "scaffold", root, "--title", "Later round", "--field", "chemistry"],
+        capture_output=True, text=True, encoding="utf-8", errors="replace")
+    if run.returncode != 0:
+        skip("every outstanding-list check", "scaffold failed")
+        return
+    ms.init(root, "JACS")
+    jdir = ms.journal_dir(root, "JACS")
+    write(root, "plan/outline.md",
+          "## Introduction\n\n"
+          "- Arrays have been resolved in mesophiles. [jensen2019arrays]\n"
+          "- A second claim the author later cut.\n\n"
+          "## Results\n\n"
+          "- Arrays keep hexagonal packing across the range. [Fig 1]\n")
+    write(root, "drafts/references.bib", BIB)
+    for stem, body in (("introduction", "Arrays have been resolved in a "
+                        "dozen species [@jensen2019arrays]."),
+                       ("results", "Packing was kept (Figure 1; Fig. S1 "
+                        "and S2; Table S1)."),
+                       ("methods", "Samples were imaged."),
+                       ("discussion", "It holds.")):
+        write(root, "drafts/source_text/%s.md" % stem,
+              "# %s\n\n%s\n" % (stem.title(), body))
+    write(root, "drafts/source_text/title_abstract.md",
+          "# Title\n\nArrays\n\n## Abstract\n\n"
+          + " ".join(["word"] * 40) + "\n")
+
+    # --- r1: unchanged - the outline is checked and its gaps are work -------
+    r1 = ms.completeness(root, "JACS")
+    check("r1 is the first round", r1["first_round"], True)
+    check("r1: an outline gap is outstanding, not a proposal",
+          any(m["area"] == "outline" for m in r1["missing"])
+          and r1["source_review"] == [], True)
+    check("r1: author and journal items are outstanding but NOT in the .docx",
+          [m["area"] for m in r1["missing"] if m.get("in_document")
+           and m["area"] in ("authors", "journal")], [])
+    block = ms.render_incomplete_block(r1, "JACS", 1)
+    check("r1: no prose is missing, so the .docx carries no block at all",
+          block, "", block[:200])
+    rep = ms.render_outstanding_report(r1, "JACS", 1)
+    check("...and the author's list is in the report instead",
+          "## Still to Do" in rep and "authors" in rep, True)
+
+    # A stub section IS missing prose, and that is what the block is for.
+    keep = read(stfile(root, "discussion.md"))
+    write(root, "drafts/source_text/discussion.md", "# Discussion\n\n")
+    stub = ms.completeness(root, "JACS")
+    blk = ms.render_incomplete_block(stub, "JACS", 1)
+    check("a stub section puts the block in the .docx",
+          "discussion is still a stub" in blk, True)
+    check("...and the block names prose only - no author or journal rows",
+          "author-guideline" in blk or "corresponding" in blk.lower(), False)
+    write(root, "drafts/source_text/discussion.md", keep)
+
+    # --- r2: the planning files become proposals ---------------------------
+    ms.update_round_state(jdir, round=2)
+    r2 = ms.completeness(root, "JACS")
+    check("r2 is not the first round", r2["first_round"], False)
+    check("r2: no outline finding is outstanding work",
+          [m for m in r2["missing"] if m["area"] == "outline"], [])
+    check("r2: they are proposals with ids instead",
+          bool(r2["source_review"]) and all(
+              i["id"].startswith("sr-") for i in r2["source_review"]), True)
+    check("...and the summary says they are waiting for a choice",
+          "waiting for you to choose" in r2["summary"], True)
+    ids = [i["id"] for i in r2["source_review"]]
+    check("an id is stable across calls",
+          [i["id"] for i in ms.completeness(root, "JACS")["source_review"]],
+          ids)
+
+    bad = ms.source_review(root, "JACS", accept=["sr-nothere"])
+    check("an id this round did not produce is refused by name",
+          bool(bad["errors"]) and "sr-nothere" in bad["errors"][0], True)
+    ms.source_review(root, "JACS", accept=[ids[0]],
+                     decline=ids[1:] or None)
+    after = ms.completeness(root, "JACS")
+    check("an accepted proposal becomes outstanding work",
+          any(ids[0] in m["detail"] for m in after["missing"]), True)
+    check("...and nothing is left waiting once every one is answered",
+          after["source_review"], [])
+
+    brief = ms.agent_brief(root, "draft-sections", "JACS")
+    prompt = brief["prompt"]
+    check("r2 brief: the outline is NOT re-applied to edited prose",
+          "PLANNING FILES ARE NOT RE-APPLIED" in prompt, True)
+    check("r2 brief: the r1 permission to add outline paragraphs is gone",
+          "added from outline line N" in prompt, False)
+    check("r2 brief: the accepted proposal is named, by id",
+          ids[0] in prompt, True)
+
+    # A new round forgets the old answers: r3's paper is a different paper.
+    ms.update_round_state(jdir, round=3)
+    check("answers are per round",
+          [i["id"] for i in ms.completeness(root, "JACS")["source_review"]]
+          == ids, True)
+    ms.update_round_state(jdir, round=2)
+
+    # --- the abstract over its limit is fixed, not asked ------------------
+    req_path = os.path.join(jdir, "journal_requirements", "requirements.yml")
+    req_text = read(req_path)
+    write(root, os.path.relpath(req_path, root),
+          re.sub(r"(?m)^(\s*word_limit_abstract:).*$", r"\1 30", req_text)
+          if re.search(r"(?m)^\s*word_limit_abstract:", req_text)
+          else req_text + "\ntext:\n  word_limit_abstract: 30\n")
+    ab = ms.completeness(root, "JACS")
+    if not any(a["kind"] == "abstract_length" for a in ab["auto_fix"]):
+        skip("the abstract checks", "no abstract limit reached the length "
+             "check from this fixture's requirements.yml")
+    else:
+        check("an abstract over the limit is an automatic fix",
+              [a["over_by"] for a in ab["auto_fix"]], [10])
+        check("...and the drafter is told to cut it",
+              "THE ABSTRACT IS OVER THE JOURNAL'S LIMIT" in ms.agent_brief(
+                  root, "draft-sections", "JACS")["prompt"], True)
+        cfgp = os.path.join(jdir, "writing_config.yml")
+        write(root, os.path.relpath(cfgp, root),
+              re.sub(r"(?m)^length_policy:\s*\w+", "length_policy: over",
+                     read(cfgp)))
+        check("length_policy: over turns it back into a carried overage",
+              ms.completeness(root, "JACS")["auto_fix"], [])
+
+    # --- the supplement label scheme is rewritten, not listed -------------
+    fixed = ms.fix_supplement_labels(
+        root, {"supplementary.naming": "Table E1; Figure E1 (Fig. E1)"})
+    res_text = read(stfile(root, "results.md"))
+    check("S labels are rewritten to the journal's scheme, whole runs",
+          ("Fig. E1 and E2" in res_text, "Table E1" in res_text,
+           "S1" in res_text), (True, True, False), res_text)
+    check("...and the rewrite is reported per file",
+          [f["file"] for f in fixed], ["results"])
+    check("a scheme that already says S changes nothing",
+          ms.fix_supplement_labels(root, {"supplementary.naming":
+                                          "Table S1"}), [])
+
+
 def test_items_138_to_157(tmp: str) -> None:
     section("The 2026-09-25 clinical defect round (items 138-157)")
 
@@ -13653,6 +13808,7 @@ def main() -> int:
         test_journal_folder_shape(tmp)
         test_figure_uploads_and_supplement(tmp)
         test_items_138_to_157(tmp)
+        test_outstanding_and_source_review(tmp)
         test_manages_scope(tmp)
         test_paper_kind(tmp)
         test_review_outline_and_brief(tmp)

@@ -600,13 +600,16 @@ what you draft *around*.
 
 What must never happen is an unfinished draft leaving the folder **looking**
 finished. So the verdict travels with the document instead of gating it: when
-anything is outstanding, `assemble` appends a block to the end of the `.docx`
-headed **`[FLAG: incomplete — PAPER NOT COMPLETE]`**, listing every item and the
-file to open for it. It is generated, and it disappears from the build by itself
-once the list is empty.
+prose is missing or a figure is mock data, `assemble` appends a block to the
+end of the `.docx` headed **`[FLAG: incomplete — PAPER NOT COMPLETE]`**, naming
+those parts and the file to open for each. Everything else outstanding goes to
+`reports/rN/outstanding.md`, not into the paper (see *What Goes in the .docx*
+below). The block is generated, and it disappears from the build by itself once
+no prose is missing.
 
-Say the same thing in your own summary — how many items are outstanding, and
-which of them only the user can close. The exit code is `1` for "not complete
+Say the whole list in your own summary — how many items are outstanding, which
+of them only the user can close, and that the full list is in
+`outstanding.md`. The exit code is `1` for "not complete
 yet", not `2`: this is a normal state, not a refusal.
 
 The real refusals are about integrity, not completeness: a section the journal
@@ -1382,8 +1385,8 @@ the check exists to catch.
 
 Staleness is the other one, and it is the reason this module exists at all: the
 user improves the slide, nothing re-renders, and the **older** image goes to the
-journal. `completeness` carries that into the PAPER NOT COMPLETE block inside
-the `.docx`. It is a content hash, never a modification time — OneDrive
+journal. `completeness` carries that into `reports/rN/outstanding.md` — the
+author's list, not the `.docx`. It is a content hash, never a modification time — OneDrive
 rewrites mtimes on sync.
 
 
@@ -1555,9 +1558,18 @@ Limits come from `requirements.yml` — `text.word_limit_*`,
 `figures.max_count`, `tables.max_count`. Pass only the ones that are sourced.
 `completeness` does all of this for you when it is given `--journal`.
 
-**Going over is a question for the user, not a defect to fix on your own
-initiative.** When `length_policy` is `ask` and the draft is over, stop and put
-the choice to them plainly, with the numbers:
+**The abstract is the exception: it is fixed, not asked about.** An abstract
+over its limit has one answer, so `completeness` lists it under `auto_fix` and
+the `draft-sections` brief tells the drafter to cut it to the limit, keeping
+every number, citekey and flag. If `draft-sections` is not in this round's
+modules, cut it yourself in session under the same rules, then re-run
+`prose.py length`. Two things turn it back into a question: `length_policy:
+over` (the user said *carry it*) and a frozen `title_abstract` (the user said
+*this is mine*).
+
+**Going over in the body is a question for the user, not a defect to fix on
+your own initiative.** When `length_policy` is `ask` and the draft is over,
+stop and put the choice to them plainly, with the numbers:
 
 > The discussion is 1,240 words against IJROBP's 1,000. Two ways to go:
 > **carry it** — keep everything for now and cut before submission, or
@@ -1577,9 +1589,30 @@ Two things to hold on to:
   Moving a float to the SI renumbers it as `Figure S<n>` — that is a
   `crossrefs` change too, so re-run it.
 - **An accepted overage is still outstanding.** It stays on `completeness`'s
-  list and in the PAPER NOT COMPLETE block under `over`, which is right: it has
-  to be resolved before submission, and the record is what stops it being
-  forgotten in round six.
+  list and in `reports/rN/outstanding.md`, which is right: it has to be
+  resolved before submission, and the record is what stops it being forgotten
+  in round six. It is **not** in the `.docx` — see below.
+
+## What Goes in the .docx, and What Goes to the Author
+
+The `[FLAG: incomplete — PAPER NOT COMPLETE]` block at the end of the built
+`.docx` appears **only when prose is missing** — a section still a stub, an
+outlined section with nothing written (r1), a section deferred by the round's
+scope — **or a figure is built from mock data.** Everything else
+`completeness` finds (author details, unknown guideline fields, the
+graphical-abstract question, label schemes, `manages` caveats) is the
+author's to-do list: it goes to `reports/rN/outstanding.md` and the terminal,
+never into the paper. A draft goes to coauthors before those details are
+settled, and they are the people who will settle them.
+
+`complete` and the NOT SENDABLE gate are unchanged: an item that is not in the
+`.docx` still blocks the package. When you report a build, say where the full
+list is.
+
+**The supplementary label scheme is fixed by `assemble`.** Where
+`supplementary.naming` says `Table E1` and the text says `Table S1`, the build
+relabels every callout run in the source text (`Figs. S1 and S2` → `Figs. E1
+and E2`), outside comments, and names each file it changed in its warnings.
 
 ## Every reference has to be cited
 

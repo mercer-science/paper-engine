@@ -1367,9 +1367,17 @@ outstanding flags, unknown journal requirements, and edits still pending.
 most of a project's life, and refusing a coauthor draft because the discussion
 is not written yet would make the pipeline useless exactly when it is most
 useful. So the verdict travels with the document instead of gating it: `assemble`
-appends a block headed **`[FLAG: incomplete — PAPER NOT COMPLETE]`** listing
-every item and the file to open for it. The block is generated and disappears by
-itself once the list is empty.
+appends a block headed **`[FLAG: incomplete — PAPER NOT COMPLETE]`** when prose
+is missing or a figure is mock data - and only then. The full list, author
+details and journal fields included, goes to `reports/rN/outstanding.md`. The
+block is generated and disappears by itself once no prose is missing.
+
+**After r1 the planning files are proposals, not work.** `completeness` puts
+each outline, captions or analysis difference under `source_review` with an id,
+and `manuscript.py source-review --accept/--decline` records which ones the
+round acts on; only the accepted ones reach the `draft-sections` brief. An
+abstract over its limit is listed under `auto_fix` and cut by the round unless
+`length_policy: over` or the abstract is frozen.
 
 Exit code is `1` for "not finished yet", never `2` - an unfinished paper is a
 normal state, not a refusal. The three real refusals are about integrity rather
