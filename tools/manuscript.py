@@ -4779,6 +4779,20 @@ def csl_citation_form(csl: str) -> dict:
     return out
 
 
+def superscript_punctuation_args(csl: str) -> list:
+    """Pandoc arguments that put a superscript citation AFTER the period or
+    comma that follows it (item 159).
+
+    AMA, ACS and Nature set a superscript outside periods and commas
+    ("in real time.1"), and pandoc only moves the punctuation for an in-text
+    style when notes-after-punctuation is set - its default is on for note
+    styles alone - so a superscript CSL rendered "in real time1." A
+    parenthetical or bracketed style is left exactly as it was."""
+    if csl_citation_form(csl).get("form") == "superscript":
+        return ["-M", "notes-after-punctuation=true"]
+    return []
+
+
 def citation_form_check(req: dict, csl: str) -> dict:
     """What style.csl renders against what references.style_name implies.
 
@@ -19646,7 +19660,7 @@ def build_supplementary(project: str, journal: str, rnd: int, req: dict,
            "--bibliography", bib_path(project)]
     csl = os.path.join(jdir, "journal_requirements", "style.csl")
     if os.path.isfile(csl):
-        cmd += ["--csl", csl]
+        cmd += ["--csl", csl] + superscript_punctuation_args(csl)
     ref_doc = os.path.join(jdir, "journal_requirements", "reference.docx")
     if os.path.isfile(ref_doc):
         cmd += ["--reference-doc", ref_doc]
@@ -20424,7 +20438,7 @@ def assemble(project: str, journal: str, allow_mock: bool = False,
            "--bibliography", bib_path(project)]
     csl = os.path.join(jdir, "journal_requirements", "style.csl")
     if os.path.isfile(csl):
-        cmd += ["--csl", csl]
+        cmd += ["--csl", csl] + superscript_punctuation_args(csl)
     else:
         warnings.append("no journal_requirements/style.csl; citations are "
                         "rendered in pandoc's default style, which is not this "

@@ -13601,6 +13601,15 @@ def test_items_138_to_157(tmp: str) -> None:
            in cf["detail"]), ("parenthesis", False, True))
     check("141: a superscript CSL agrees",
           ms.citation_form_check(ama, sup)["agrees"], True)
+    # --- 159: a superscript goes after the period, a bracket is untouched --
+    check("159: a superscript CSL asks pandoc for notes after punctuation",
+          ms.superscript_punctuation_args(sup),
+          ["-M", "notes-after-punctuation=true"])
+    check("159: a parenthetical CSL is left exactly as it was",
+          ms.superscript_punctuation_args(paren), [])
+    check("159: no CSL at all adds nothing",
+          ms.superscript_punctuation_args(os.path.join(cdir, "absent.csl")),
+          [])
     cf = ms.citation_form_check(ama, os.path.join(cdir, "absent.csl"))
     check("141: no CSL for a known style is said, with the canonical file",
           (cf["csl_present"], "canonical CSL" in cf["detail"]),
