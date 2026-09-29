@@ -1996,6 +1996,584 @@ def print_brief(res: dict) -> None:
             print(f"  note: {line}")
 
 
+# ---------------------------------------------------------------------------
+# The methods notebook (specs/methods-notebook-2026-09-28.md 3)
+# ---------------------------------------------------------------------------
+#
+# The brief is what a member READS: the pack, verbatim. The notebook is what
+# they TICK: what the project needs, then every step as tick boxes. It is a
+# to-do list and never a methods section, so it carries nothing asserted -
+# the engine writes only what it can derive without rewording, and every
+# line the skill adds is held to one rule that is code rather than wording:
+# a number in it must be one the pack's text for that step carries, or one
+# the user decided (3.4).
+
+NOTEBOOK_FILENAME = "methods_notebook.md"
+NOTEBOOK_BANNER = "<!-- labpack-notebook -->"
+NOTEBOOK_LOG_HEADING = "## Your Log"
+SOFTWARE_SOURCE = "software.md"
+NOT_A_PROGRAM = "<!-- not-a-program -->"
+
+# A paragraph that opens with one of these, in bold, is the pack's own
+# statement of a constraint and is quoted WHOLE: the house style bolds the
+# label and writes the constraint after it, so the label alone says nothing.
+WATCH_LABEL_RE = re.compile(
+    r"^\*\*([^*]*?(?:rules out|cannot|can't|read this before|the trap"
+    r"|caveat)[^*]*)\*\*", re.I)
+# Anywhere else, a bold span carrying one of these words is quoted. The
+# second line was added after measuring on a real pack: "expect CUDA and
+# dependency conflicts" and "it needs the metadata filled correctly" are
+# warnings, and the first list quoted neither.
+WATCH_WORD_RE = re.compile(
+    r"\b(?:not|never|cannot|can't|must|only|before|within|below|under"
+    r"|rules out|trap|depends"
+    r"|needs?|expect|unconfirmed|confirm|picks up|conflicts?)\b", re.I)
+_BOLD_RE = re.compile(r"\*\*(.+?)\*\*", re.S)
+_LINK_RE = re.compile(r"\[[^\]\n]+\]\([^)\s]+\)")
+_NUMBER_RE = re.compile(r"\d+(?:[.,]\d+)*")
+_TICKED_RE = re.compile(r"^\s*- \[[xX]\]\s+(.+?)\s*$", re.M)
+
+
+def _joined(text: str) -> str:
+    """The pack's words with its line wrap joined. A bullet cannot carry a
+    line break, and that is the only change made to them."""
+    return " ".join(text.split())
+
+
+def watch_out(body: str) -> list:
+    """The pack's own emphasis on a constraint, in its own words."""
+    out: list = []
+    for para in re.split(r"\n\s*\n", body or ""):
+        para = para.strip()
+        if not para:
+            continue
+        if WATCH_LABEL_RE.match(para):
+            out.append(_joined(para))
+            continue
+        for m in _BOLD_RE.finditer(para):
+            # Four words at least. Measured on a real pack: "below -165 C"
+            # and "under 5 nm" matched on the preposition, and a bare
+            # threshold with its sentence cut away is not a warning.
+            if (WATCH_WORD_RE.search(m.group(1))
+                    and len(m.group(1).split()) >= 4):
+                out.append("**" + _joined(m.group(1)) + "**")
+    seen: set = set()
+    return [q for q in out if not (q in seen or seen.add(q))]
+
+
+def _numbers(text: str) -> set:
+    return set(_NUMBER_RE.findall(text or ""))
+
+
+def _norm_line(text: str) -> str:
+    return " ".join((text or "").lower().split())
+
+
+def notebook_sources(pack_path: str, lab: dict | None = None) -> dict:
+    """Both files a step can come from, and what each step uses."""
+    route = brief_route(pack_path, lab)
+    docs = route["documents"]
+    soft = docs.get(SOFTWARE_SOURCE) or {"sections": []}
+    programs = [s for s in soft["sections"]
+                if NOT_A_PROGRAM not in s["body"]]
+    route_texts = [s["heading"] + "\n" + s["body"] for s in route["steps"]]
+    # A program is matched by its NAME - the `software_name` its yaml half
+    # carries - and never by its heading. Measured on a real pack: heading
+    # words attached an alignment program to every SOP that says
+    # "alignment", and a collection-software block to five steps through
+    # "collection" and the microscope's name. A program's own name is what a
+    # step that uses it actually writes.
+    by_name: dict = {}
+    for s in programs:
+        m = re.search(r"^software_name:\s*\"?(.+?)\"?\s*$", s["body"], re.M)
+        by_name[m.group(1) if m else s["heading"]] = s["heading"]
+    name_tokens = distinctive_tokens(list(by_name), route_texts)
+    soft_tokens = {by_name[n]: toks for n, toks in name_tokens.items()}
+    # Documentation sections of the instrument file are not instruments a
+    # step can use or a member can need.
+    inst_sections = {h: b for h, b in
+                     (route.get("instrument_sections") or {}).items()
+                     if "<!-- not-an-instrument -->" not in b}
+    inst_tokens = distinctive_tokens(list(inst_sections), route_texts)
+
+    def named_in(text: str, tokens: dict) -> list:
+        hay = text.lower()
+        return [h for h, toks in tokens.items()
+                if any(re.search(r"\b" + re.escape(t) + r"\b", hay)
+                       for t in toks)]
+
+    steps: list = []
+    for s in route["steps"]:
+        text = s["heading"] + "\n" + s["body"]
+        steps.append({"heading": s["heading"], "body": s["body"],
+                      "file": route["source"], "instruments":
+                      list(s.get("instruments") or []),
+                      "software": named_in(text, soft_tokens)})
+    program_names = {p["heading"] for p in programs}
+    for s in soft["sections"]:
+        text = s["heading"] + "\n" + s["body"]
+        steps.append({"heading": s["heading"], "body": s["body"],
+                      "file": SOFTWARE_SOURCE,
+                      "instruments": named_in(text, inst_tokens),
+                      "software": ([s["heading"]]
+                                   if s["heading"] in program_names else [])})
+    return {"route": route, "steps": steps,
+            "route_count": len(route["steps"]),
+            "programs": {p["heading"]: p["body"] for p in programs},
+            "instruments": inst_sections}
+
+
+def notebook_list() -> dict:
+    """The names a bundle may use, read off the pack rather than typed."""
+    res: dict = {"state": "", "route_source": "", "route_steps": [],
+                 "software": [], "software_steps": [], "instruments": [],
+                 "notes": []}
+    pack = find_pack()
+    if pack.get("source") == "ambiguous" or not pack.get("path"):
+        res["state"] = pack.get("source") == "ambiguous" and "ambiguous" \
+            or "no-pack"
+        res["notes"].append(pack.get("note", ""))
+        return res
+    src = notebook_sources(pack["path"])
+    res.update({
+        "state": "ok", "route_source": src["route"]["source"],
+        "route_steps": [s["heading"] for s in src["steps"]
+                        if s["file"] != SOFTWARE_SOURCE],
+        "software_steps": [s["heading"] for s in src["steps"]
+                           if s["file"] == SOFTWARE_SOURCE],
+        "software": list(src["programs"]),
+        "instruments": list(src["instruments"])})
+    res["notes"] += src["route"]["notes"]
+    return res
+
+
+def _pack_destination(project: str, out: str, filename: str,
+                      what: str) -> tuple:
+    """Where a pack-derived file goes, and the one place it may never go.
+
+    `data/` is refused by name for every file this module writes: it is the
+    one destination where a pack default would be mistaken for a checked
+    fact, because `methods_facts.yml` is rendered into the methods section.
+    """
+    root = os.path.abspath(os.path.expanduser(project or "."))
+    dest = (os.path.abspath(os.path.expanduser(out)) if out
+            else os.path.join(root, "plan", filename)
+            if os.path.isdir(os.path.join(root, "plan"))
+            else os.path.join(root, filename))
+    try:
+        rel = os.path.relpath(dest, root)
+    except ValueError:                       # a different drive
+        rel = dest
+    parts = [p.lower() for p in rel.replace("\\", "/").split("/")]
+    if "data" in parts:
+        return dest, (
+            f"{what} is never written under `data/`. Everything there is a "
+            "record of what THIS project did - `methods_facts.yml` is "
+            "rendered into the methods section - and a pack default sitting "
+            "beside it is the one way a facility number reaches print "
+            "wearing the shape of a checked fact. It goes in `plan/`.")
+    return dest, ""
+
+
+def _carried_notebook(path: str) -> tuple:
+    """(the `## Your Log` body, the ticked lines, is_ours)."""
+    if not os.path.exists(path):
+        return "", set(), True
+    try:
+        with io.open(path, encoding="utf-8", errors="replace") as fh:
+            text = fh.read()
+    except OSError:
+        return "", set(), False
+    if NOTEBOOK_BANNER not in text[:400]:
+        return "", set(), False
+    ticked = {_norm_line(m.group(1)) for m in _TICKED_RE.finditer(text)}
+    # At the start of a line: the header names the section in a sentence too
+    # (the brief's first defect - a marker that also appears in prose about
+    # the marker).
+    m = re.search(r"^" + re.escape(NOTEBOOK_LOG_HEADING) + r"\s*$", text,
+                  re.MULTILINE)
+    log = text[m.end():].strip("\n") if m else ""
+    return log, ticked, True
+
+
+def render_notebook(pack: dict, chosen: list, needs: dict, narrowed: bool,
+                    project_title: str, carried: str, ticked: set) -> tuple:
+    """(the file, how many ticks were carried forward)."""
+    today = datetime.date.today().isoformat()
+    display = pack.get("display_name") or "this lab"
+    curated = pack.get("curated_on") or "an unrecorded date"
+    kept = [0]
+
+    def box(text: str) -> str:
+        if _norm_line(text) in ticked:
+            kept[0] += 1
+            return f"- [x] {text}"
+        return f"- [ ] {text}"
+
+    lines: list = [NOTEBOOK_BANNER, ""]
+    lines.append("# Methods Notebook"
+                 + (f" - {project_title}" if project_title else ""))
+    lines.append("")
+    lines.append(
+        f"Generated {today} by `labpack.py notebook` from the **{display}** "
+        f"pack (`{pack.get('name') or pack.get('path', '')}` "
+        f"{pack.get('version') or 'unversioned'}), curated {curated}.")
+    lines.append("")
+    lines.append(
+        "**This is a to-do list, not a methods section, and nothing here is "
+        "a methods fact.** Tick things off as you go. What you actually did "
+        "- the values, the versions, the dates - goes in "
+        "`data/methods_facts.yml`. The pack's full wording for every step is "
+        "in `plan/lab_pack_brief.md`; `## Your Log` at the end is yours, and "
+        "regenerating this file keeps it and your ticks.")
+    lines.append("")
+    if not narrowed:
+        lines.append(
+            "**This has not been narrowed to this project yet.** It lists "
+            "every step the pack's route carries; `idea-generation` narrows "
+            "it to the steps this project uses, in the order it will use "
+            "them. Until then, skip what does not apply.")
+        lines.append("")
+
+    lines += ["## What We Need", ""]
+
+    def uses(name: str, where: list) -> str:
+        nums = ", ".join(str(n) for n in where)
+        return f"{name} - step{'s' if len(where) > 1 else ''} {nums}"
+
+    any_need = False
+    for title, rows in (("Instruments", needs["instruments"]),
+                        ("Software", needs["software"])):
+        if rows:
+            any_need = True
+            lines += [f"**{title}**", ""]
+            lines += [box(uses(n, w) if w else n) for n, w in rows]
+            lines.append("")
+    if needs["project"]:
+        any_need = True
+        lines += ["**For This Project**", ""]
+        lines += [box(n) for n in needs["project"]]
+        lines.append("")
+    if needs["protocols"]:
+        any_need = True
+        lines += ["**Protocols to Read**", ""]
+        lines += [box(f"{h}: {link}") for h, link in needs["protocols"]]
+        lines.append("")
+    if not any_need:
+        lines += ["Nothing the pack names is attached to these steps yet.",
+                  ""]
+
+    lines += ["## Steps", ""]
+    for i, step in enumerate(chosen, start=1):
+        entry = step.get("project") or {}
+        lines += [f"### {i}. {step['heading']}", ""]
+        todo = _bullets(entry.get("todo"))
+        if not todo:
+            where = ("`plan/lab_pack_brief.md`"
+                     if step["file"] != SOFTWARE_SOURCE
+                     else f"`{SOFTWARE_SOURCE}`, in the pack,")
+            todo = [f"Read this step in {where} before starting."]
+        lines += [box(t) for t in todo]
+        lines.append("")
+        decided = _bullets(entry.get("decided"))
+        if decided:
+            lines.append("**Decided.**")
+            lines.append("")
+            lines += [f"- {d}" for d in decided]
+            lines.append("")
+        quotes = watch_out(step["body"])
+        if quotes:
+            lines.append(f"**Watch Out** - the pack's own words, "
+                         f"`{step['file']}`, curated {curated}:")
+            lines.append("")
+            lines += [f"- {q}" for q in quotes]
+            lines.append("")
+        used = step["instruments"] + [s for s in step["software"]
+                                      if s != step["heading"]]
+        if used:
+            lines += ["**Uses.** " + "; ".join(used), ""]
+        record = _bullets(entry.get("record"))
+        if (step["file"] == SOFTWARE_SOURCE and step["software"]
+                and not any("version" in r.lower() for r in record)):
+            # The pack records no version on purpose, so the one thing every
+            # program step must end with is a reminder to write it down.
+            record.append(f"The version of {step['heading']} you ran")
+        if record:
+            lines.append("**Write Down, in `data/methods_facts.yml`.**")
+            lines.append("")
+            lines += [f"- {r}" for r in record]
+            lines.append("")
+
+    lines += [NOTEBOOK_LOG_HEADING, ""]
+    if carried.strip():
+        lines.append(carried.strip("\n"))
+    else:
+        lines.append("What you did, when, and what went wrong. This section "
+                     "is yours - `labpack.py notebook` never overwrites it.")
+        lines.append("")
+        lines.append("- ")
+    text = re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).rstrip() + "\n"
+    return text, kept[0]
+
+
+def notebook(project: str = ".", bundle: dict | None = None, out: str = "",
+             dry_run: bool = False, force: bool = False) -> dict:
+    """One project's methods notebook. Reads a pack, writes one file.
+
+    Every refusal happens before anything is written, and none is a partial
+    write - the brief's rule, for the brief's reason.
+    """
+    res: dict = {"state": "", "path": "", "text": "", "errors": [],
+                 "notes": [], "steps": 0, "narrowed": False,
+                 "carried_log": False, "carried_ticks": 0, "pack": "",
+                 "version": "", "curated_on": ""}
+    root = os.path.abspath(os.path.expanduser(project or "."))
+    if not os.path.isdir(root):
+        res["state"] = "refused"
+        res["errors"].append(f"no such project directory: {root}")
+        return res
+    pack = find_pack()
+    if pack.get("source") == "ambiguous":
+        res["state"] = "ambiguous"
+        res["notes"].append(pack.get("note", ""))
+        return res
+    if not pack.get("path"):
+        res["state"] = "no-pack"
+        res["notes"].append(pack.get("note", ""))
+        return res
+
+    info = pack_info(pack["path"])
+    lab = read_lab_yml(pack["path"])
+    src = notebook_sources(pack["path"], lab)
+    res["notes"] += src["route"]["notes"]
+    res.update({"pack": info.get("name", ""),
+                "version": info.get("version", ""),
+                "curated_on": info.get("curated_on", "")})
+
+    bundle = dict(bundle or {})
+    by_norm = {_norm_heading(s["heading"]): s for s in src["steps"]}
+    entries = [e for e in (bundle.get("steps") or []) if isinstance(e, dict)]
+    chosen: list = []
+    seen: set = set()
+    for entry in entries:
+        name = str(entry.get("step") or "").strip()
+        key = _norm_heading(name)
+        if not key:
+            res["errors"].append("a step entry names no step")
+            continue
+        if key not in by_norm:
+            res["errors"].append(
+                f"the bundle names a step this pack does not carry: "
+                f"\"{name}\". A step is a heading of `"
+                f"{src['route']['source'] or 'the route file'}` or of `"
+                f"{SOFTWARE_SOURCE}`: "
+                + "; ".join(s["heading"] for s in src["steps"]))
+            continue
+        if key in seen:
+            res["errors"].append(
+                f"two entries name one step: \"{name}\". One entry per "
+                "step, so nothing has to decide which of them wins")
+            continue
+        seen.add(key)
+        chosen.append(dict(by_norm[key], project=entry))
+    narrowed = bool(entries)
+    if not narrowed:
+        chosen = [dict(s) for s in src["steps"]
+                  if s["file"] != SOFTWARE_SOURCE]
+
+    extra_inst = _bullets(bundle.get("instruments"))
+    extra_soft = _bullets(bundle.get("software"))
+    inst_norm = {_norm_heading(h): h for h in src["instruments"]}
+    soft_norm = {_norm_heading(h): h for h in src["programs"]}
+    for name in extra_inst:
+        if _norm_heading(name) not in inst_norm:
+            res["errors"].append(
+                f"the bundle needs an instrument the pack does not carry: "
+                f"\"{name}\". Its instruments are: "
+                + "; ".join(src["instruments"]))
+    for name in extra_soft:
+        if _norm_heading(name) not in soft_norm:
+            res["errors"].append(
+                f"the bundle needs software the pack does not carry: "
+                f"\"{name}\". Its programs are: "
+                + "; ".join(src["programs"]))
+
+    # 3.4 - the number rule. A number the skill wrote must be one the pack's
+    # text for that step carries, or one the user decided.
+    def allowed(step: dict) -> set:
+        text = step["body"]
+        for n in step["instruments"]:
+            text += "\n" + src["instruments"].get(n, "")
+        for n in step["software"]:
+            text += "\n" + src["programs"].get(n, "")
+        entry = step.get("project") or {}
+        text += "\n" + "\n".join(_bullets(entry.get("decided")))
+        return _numbers(text)
+
+    everywhere: set = set()
+    for step in chosen:
+        ok = allowed(step)
+        everywhere |= ok
+        entry = step.get("project") or {}
+        for field in ("todo", "record"):
+            for line in _bullets(entry.get(field)):
+                missing = sorted(_numbers(line) - ok)
+                if missing:
+                    res["errors"].append(
+                        f"step \"{step['heading']}\", {field} line "
+                        f"\"{line}\" carries {', '.join(missing)}, which "
+                        "neither the pack's text for this step nor its "
+                        "`decided` list carries. A paraphrased number drifts "
+                        "from its source; quote the pack's, or record the "
+                        "user's decision in `decided`")
+    project_needs = _bullets(bundle.get("needs"))
+    for line in project_needs:
+        missing = sorted(_numbers(line) - everywhere)
+        if missing:
+            res["errors"].append(
+                f"needs line \"{line}\" carries {', '.join(missing)}, which "
+                "no chosen step's pack text or decisions carry")
+
+    dest, why = _pack_destination(root, out, NOTEBOOK_FILENAME,
+                                  "a methods notebook")
+    if why:
+        res["errors"].append(why)
+    carried, ticked, ours = _carried_notebook(dest)
+    if not ours and not force:
+        res["errors"].append(
+            f"{dest} exists and was not written by this command (it carries "
+            f"no {NOTEBOOK_BANNER} banner), so it is not this command's file "
+            "to overwrite. Write elsewhere with --out, or overwrite it "
+            "deliberately with --force")
+    if res["errors"]:
+        res["state"] = "refused"
+        res["path"] = dest
+        return res
+
+    # What We Need: every instrument and program the chosen steps use, each
+    # with the steps that use it, plus the bundle's own.
+    inst_rows: dict = {}
+    soft_rows: dict = {}
+    protocols: list = []
+    for i, step in enumerate(chosen, start=1):
+        for n in step["instruments"]:
+            inst_rows.setdefault(n, []).append(i)
+        for n in step["software"]:
+            soft_rows.setdefault(n, []).append(i)
+        # One line per step, never one per link: measured on a real pack, an
+        # index section's table alone put 27 lines into What We Need.
+        links = [l for l in dict.fromkeys(_LINK_RE.findall(step["body"]))]
+        if links:
+            shown = ", ".join(links[:4])
+            if len(links) > 4:
+                shown += f", and {len(links) - 4} more in the pack"
+            protocols.append((step["heading"], shown))
+    for name in extra_inst:
+        inst_rows.setdefault(inst_norm[_norm_heading(name)], [])
+    for name in extra_soft:
+        soft_rows.setdefault(soft_norm[_norm_heading(name)], [])
+    needs = {"instruments": list(inst_rows.items()),
+             "software": list(soft_rows.items()),
+             "project": project_needs, "protocols": protocols}
+
+    text, kept = render_notebook({**info, **pack}, chosen, needs, narrowed,
+                                 _project_title(root), carried, ticked)
+    res.update({"path": dest, "text": text, "steps": len(chosen),
+                "narrowed": narrowed, "carried_log": bool(carried.strip()),
+                "carried_ticks": kept})
+    if dry_run:
+        res["state"] = "dry-run"
+        return res
+    try:
+        os.makedirs(os.path.dirname(dest), exist_ok=True)
+        with io.open(dest, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write(text)
+    except OSError as exc:
+        res["state"] = "refused"
+        res["errors"].append(f"could not write {dest}: {exc}")
+        return res
+    res["state"] = "written"
+    return res
+
+
+def notebook_check(project: str = ".", out: str = "") -> dict:
+    """Is the notebook on disk still the pack that is installed? Reports,
+    never regenerates - a notebook carries a member's ticks."""
+    root = os.path.abspath(os.path.expanduser(project or "."))
+    dest, _ = _pack_destination(root, out, NOTEBOOK_FILENAME,
+                                "a methods notebook")
+    return _version_line(dest, "notebook", project)
+
+
+def _version_line(dest: str, command: str, project: str) -> dict:
+    res: dict = {"state": "", "line": "", "path": dest, "was": "", "now": ""}
+    if not os.path.exists(dest):
+        res["state"] = "missing"
+        res["line"] = (f"no {command} at {dest}. `labpack.py {command} "
+                       f"--project \"{project}\"` writes one.")
+        return res
+    try:
+        with io.open(dest, encoding="utf-8", errors="replace") as fh:
+            text = fh.read(4000)
+    except OSError as exc:
+        res["state"] = "unknown"
+        res["line"] = f"the {command} could not be read: {exc}"
+        return res
+    m = re.search(r"pack \(`[^`]*` ([^)]+)\), curated (\d{4}-\d{2}-\d{2})",
+                  text)
+    res["was"] = m.group(1).strip() if m else ""
+    pack = find_pack()
+    if not pack.get("path"):
+        res["state"] = "unknown"
+        res["line"] = (f"a {command} is on disk and no pack is installed, so "
+                       "whether it is current cannot be answered here.")
+        return res
+    res["now"] = pack_info(pack["path"]).get("version", "")
+    if not res["was"]:
+        res["state"] = "unknown"
+        res["line"] = (f"the {command} does not record which pack version it "
+                       "came from, so whether it is current is unknown.")
+        return res
+    if res["was"] == res["now"]:
+        res["state"] = "current"
+        res["line"] = (f"the {command} is current: it was written from pack "
+                       f"{res['was']}, which is the one installed.")
+        return res
+    res["state"] = "stale"
+    res["line"] = (f"the {command} was written from pack {res['was']} and "
+                   f"{res['now']} is installed now. Re-run `labpack.py "
+                   f"{command} --project \"...\"` to bring it up to date; "
+                   "what you wrote in it is carried forward.")
+    return res
+
+
+def print_notebook(res: dict) -> None:
+    if res["state"] in ("no-pack", "ambiguous"):
+        if res["state"] == "no-pack":
+            print("No lab resource pack is installed, so there is no "
+                  "notebook to write.")
+        for line in _wrap(res["notes"][0] if res["notes"] else ""):
+            print(f"  {line}")
+        return
+    if res["state"] == "refused":
+        print("REFUSED - nothing was written.")
+        for err in res["errors"]:
+            for line in _wrap(err):
+                print(f"  {line}")
+        return
+    verb = "would write" if res["state"] == "dry-run" else "wrote"
+    print(f"{verb} {res['path']}")
+    print(f"  {res['steps']} step(s)"
+          + ("" if res["narrowed"] else ", not yet narrowed to this project"))
+    if res["carried_ticks"]:
+        print(f"  {res['carried_ticks']} ticked item(s) carried forward")
+    if res["carried_log"]:
+        print("  your `## Your Log` section was carried forward unchanged")
+    for note in res["notes"]:
+        for line in _wrap(note):
+            print(f"  note: {line}")
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(
         prog="labpack.py",
@@ -2056,6 +2634,30 @@ def main(argv: list[str] | None = None) -> int:
     brf.add_argument("--check", action="store_true",
                      help="is the brief on disk still the pack that is "
                           "installed? Reports; never regenerates")
+
+    nbk = sub.add_parser("notebook", parents=[common],
+                         help="one project's methods notebook: what it "
+                              "needs, then every step as tick boxes. A "
+                              "to-do list, never a methods section")
+    nbk.add_argument("--project", default=".",
+                     help="the project directory. Default: here")
+    nbk.add_argument("--bundle", default="",
+                     help="a JSON file: the steps in this project's order, "
+                          "with todo / record / decided per step, and needs")
+    nbk.add_argument("--out", default="",
+                     help="write somewhere other than plan/"
+                          + NOTEBOOK_FILENAME + ". Never under data/")
+    nbk.add_argument("--dry-run", action="store_true",
+                     help="render it and write nothing")
+    nbk.add_argument("--force", action="store_true",
+                     help="overwrite a file at the destination that this "
+                          "command did not write")
+    nbk.add_argument("--check", action="store_true",
+                     help="is the notebook on disk still the pack that is "
+                          "installed? Reports; never regenerates")
+    nbk.add_argument("--list", action="store_true",
+                     help="the step, software and instrument names a bundle "
+                          "may use, read off the pack")
 
     cfg = sub.add_parser("config", parents=[common],
                          help="record a pack path or a drop-zone, per machine")
@@ -2121,6 +2723,53 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps(res, indent=2, ensure_ascii=False))
         else:
             print_brief(res)
+        return 2 if res["state"] == "refused" else 0
+
+    if args.cmd == "notebook":
+        if args.list:
+            lst = notebook_list()
+            if args.json:
+                print(json.dumps(lst, indent=2, ensure_ascii=False))
+            else:
+                if lst["state"] != "ok":
+                    print(lst["notes"][0] if lst["notes"] else lst["state"])
+                    return 0
+                print(f"route steps ({lst['route_source']}):")
+                for h in lst["route_steps"]:
+                    print(f"  {h}")
+                print(f"software steps ({SOFTWARE_SOURCE}):")
+                for h in lst["software_steps"]:
+                    print(f"  {h}")
+                print("instruments:")
+                for h in lst["instruments"]:
+                    print(f"  {h}")
+            return 0
+        if args.check:
+            chk = notebook_check(args.project, out=args.out)
+            if args.json:
+                print(json.dumps(chk, indent=2, ensure_ascii=False))
+            else:
+                for line in _wrap(chk["line"]):
+                    print(line)
+            return 0
+        payload = {}
+        if args.bundle:
+            try:
+                with io.open(args.bundle, encoding="utf-8") as fh:
+                    loaded = json.load(fh)
+            except (OSError, ValueError) as exc:
+                print(f"could not read {args.bundle}: {exc}", file=sys.stderr)
+                return 2
+            if not isinstance(loaded, dict):
+                print(f"{args.bundle} is not a JSON object", file=sys.stderr)
+                return 2
+            payload = loaded
+        res = notebook(args.project, bundle=payload, out=args.out,
+                       dry_run=args.dry_run, force=args.force)
+        if args.json:
+            print(json.dumps(res, indent=2, ensure_ascii=False))
+        else:
+            print_notebook(res)
         return 2 if res["state"] == "refused" else 0
 
     if args.cmd == "bump":

@@ -182,6 +182,38 @@ PROPOSED_SOURCE_CITATION_RE = re.compile(
     re.I)
 PROPOSED_SOURCE_RESOURCES_RE = re.compile(
     r"(?:^|[/\\])Resources[/\\]", re.I)
+# specs/methods-notebook-2026-09-28.md 1: the third kind, a section of the
+# lab pack - `pack:<file>.md - <heading>`. Checked against the pack that
+# resolves, never pattern-matched alone: a source that cannot be checked is
+# the guess this rule exists to refuse.
+PROPOSED_SOURCE_PACK_RE = re.compile(
+    r"^pack:\s*([^\s/\\]+\.md)\s*(?:[-–—]\s*(.*?))?\s*$", re.I)
+
+
+def pack_source_problem(src: str) -> str:
+    """Why a `pack:` source cannot be accepted, or "" when it can."""
+    m = PROPOSED_SOURCE_PACK_RE.match(src)
+    if not m:
+        return "is not a pack source"
+    fname, heading = m.group(1), (m.group(2) or "").strip()
+    if not heading:
+        return (f"names {fname} but no section of it. A pack source is "
+                f"`pack:{fname} - <the section heading>`")
+    pack = labpack.find_pack()
+    if not pack.get("path"):
+        return ("names a pack section, and no lab pack is installed here, "
+                "so the source cannot be checked")
+    docs = labpack.pack_documents(pack["path"])
+    doc = docs.get(fname)
+    if doc is None:
+        return (f"names {fname}, which the installed pack does not carry. "
+                "Its files are: " + ", ".join(sorted(docs)))
+    heads = [sec["heading"] for sec in doc["sections"]]
+    if labpack._norm_heading(heading) not in {labpack._norm_heading(h)
+                                              for h in heads}:
+        return (f"names a section {fname} does not carry: \"{heading}\". "
+                "Its sections are: " + "; ".join(heads))
+    return ""
 
 
 # ---------------------------------------------------------------------------
@@ -810,12 +842,18 @@ def validate(bundle: dict, mode: str) -> tuple[list[str], list[str]]:
                 continue
             is_cite = bool(PROPOSED_SOURCE_CITATION_RE.match(src))
             is_res = bool(PROPOSED_SOURCE_RESOURCES_RE.search(src))
-            if not (is_cite or is_res):
+            if PROPOSED_SOURCE_PACK_RE.match(src):
+                why = pack_source_problem(src)
+                if why:
+                    errors.append(f"{where} source {src!r} {why}")
+            elif not (is_cite or is_res):
                 errors.append(
-                    f"{where} source {src!r} is neither kind. There are two: "
-                    f"a retrievable citation WITH the section it came from "
-                    f"(\"PMID 22267509 - Methods\", \"doi:10.1/x - S2\"), or a "
-                    f"path under Resources/")
+                    f"{where} source {src!r} is neither kind. There are "
+                    f"three: a retrievable citation WITH the section it came "
+                    f"from (\"PMID 22267509 - Methods\", \"doi:10.1/x - "
+                    f"S2\"), a path under Resources/, or a section of the "
+                    f"lab pack (\"pack:sops.md - <the section heading>\") - "
+                    f"the section it came from")
             # A citation in a proposal is a citation, and 4 applies to it: it
             # may only name a paper that was actually retrieved and verified.
             # Without this, the one file in the project whose whole purpose is

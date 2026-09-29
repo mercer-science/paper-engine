@@ -3558,7 +3558,12 @@ _TREE_SKIP = {".git", "__pycache__", ".Rproj.user"}
 # The layer is IN the marker (lab-resource-pack 4.2): a prefilled detector
 # model that a member has to check is one they cannot check without knowing
 # whose it is. `pack:` and `drop-zone:` are the two layers that can write one.
-PREFILL_MARKER = ("# --- prefilled from %s:instruments.md (%s), %s ---")
+#
+# The FILE is in the marker too, since 2026-09-28 (methods-notebook 2): a
+# pack's `software.md` is read by the same parser and prefilled the same way,
+# and a member checking a value has to know which of the two files to correct.
+PREFILL_MARKER = ("# --- prefilled from %s:%s (%s), %s ---")
+PREFILL_FILES = ("instruments.md", "software.md")
 # GREEDY, and anchored on the date - an instrument name has parentheses in it
 # (`Helios 5 UX (dual-beam SEM/FIB)`), so a non-greedy `\((.+?)\)` stops at the
 # inner one and the name never matches the block it came from. Measured: the
@@ -3572,7 +3577,8 @@ PREFILL_MARKER = ("# --- prefilled from %s:instruments.md (%s), %s ---")
 # one optional group. Same reasoning as `retired_section_path()` reading two
 # archive layouts.
 PREFILL_MARKER_RE = re.compile(
-    r"^#\s*---\s*prefilled from (?:[a-z-]+:|resources/)?instruments\.md\s*"
+    r"^#\s*---\s*prefilled from (?:[a-z-]+:|resources/)?"
+    r"(?:instruments|software)\.md\s*"
     r"\((.+)\),\s*\d{4}-\d{2}-\d{2}", re.M)
 
 # A key line inside an instrument block: `accelerating_voltage_kV: 5`.
@@ -3595,6 +3601,10 @@ TK_RE = re.compile(r"\[TK\b", re.I)
 # a list of heading names in here that has to be kept in step with a file the
 # group edits.
 NOT_AN_INSTRUMENT = "<!-- not-an-instrument -->"
+# Its counterpart in a pack's `software.md`: a technique whose package is not
+# named is a section a paper cannot cite a program from.
+NOT_A_PROGRAM = "<!-- not-a-program -->"
+SKIP_MARKERS = (NOT_AN_INSTRUMENT, NOT_A_PROGRAM)
 
 
 def _read_utf8(path: str) -> str:
@@ -3670,7 +3680,7 @@ def parse_instrument_blocks(path: str) -> dict:
                 current = None
             continue
         if current is not None:
-            if NOT_AN_INSTRUMENT in line:
+            if any(m in line for m in SKIP_MARKERS):
                 current["skip"] = True
             current["lines"].append(line)
 
@@ -3741,8 +3751,12 @@ def _labpack():
     return mod
 
 
-def instrument_layers(resources: str = "") -> list:
+def instrument_layers(resources: str = "",
+                      filename: str = "instruments.md") -> list:
     """Every layer that could hold an `instruments.md`, narrowest LAST.
+
+    Or a `software.md`: the same two layers and the same merge, over the file
+    name rather than copied (methods-notebook 2.2).
 
     Narrowest last so a plain dict update leaves the narrowest value in place,
     which is the one line of this that a reader has to trust.
@@ -3755,23 +3769,23 @@ def instrument_layers(resources: str = "") -> list:
     layers = []
     if resources:
         layers.append({"layer": "drop-zone", "label": "drop-zone",
-                       "path": os.path.join(resources, "instruments.md")})
+                       "path": os.path.join(resources, filename)})
     else:
         for root in reversed(lp.resource_roots()):
             layers.append({"layer": "drop-zone",
                            "label": f"drop-zone ({root['source']})",
-                           "path": os.path.join(root["path"],
-                                                "instruments.md")})
+                           "path": os.path.join(root["path"], filename)})
     pack = lp.find_pack()
     if pack.get("path"):
         layers.append({"layer": "pack",
                        "label": f"pack ({pack.get('display_name') or 'lab'})",
-                       "path": os.path.join(pack["path"], "instruments.md"),
+                       "path": os.path.join(pack["path"], filename),
                        "pack": pack})
     return layers
 
 
-def merged_instrument_blocks(resources: str = "") -> dict:
+def merged_instrument_blocks(resources: str = "",
+                             filename: str = "instruments.md") -> dict:
     """One block list, merged across the layers, each key knowing its layer.
 
     The merge is per KEY rather than per block. Two layers describing the same
@@ -3782,7 +3796,9 @@ def merged_instrument_blocks(resources: str = "") -> dict:
     """
     out: dict = {"blocks": [], "notes": [], "layers": [], "sources": []}
     merged: dict = {}
-    for layer in instrument_layers(resources):
+    skip_marker = (NOT_A_PROGRAM if filename == "software.md"
+                   else NOT_AN_INSTRUMENT)
+    for layer in instrument_layers(resources, filename):
         parsed = parse_instrument_blocks(layer["path"])
         out["layers"].append({"layer": layer["layer"], "label": layer["label"],
                               "path": layer["path"],
@@ -3815,7 +3831,7 @@ def merged_instrument_blocks(resources: str = "") -> dict:
                 f"They are prose, which is what a person reads - add a "
                 f"```yaml block to the ones that are instruments, and mark "
                 f"the ones that are documentation with "
-                f"{NOT_AN_INSTRUMENT}")
+                f"{skip_marker}")
         for block in parsed["blocks"]:
             slot = merged.setdefault(block["name"],
                                      {"name": block["name"], "keys": {},
@@ -3836,7 +3852,10 @@ def merged_instrument_blocks(resources: str = "") -> dict:
             slot["layer"] = layer["layer"]
             slot["label"] = layer["label"]
     out["blocks"] = [merged[name] for name in sorted(merged)]
-    if not out["sources"]:
+    if not out["sources"] and filename == "instruments.md":
+        # Said for the instrument file only. A pack with no software file is
+        # the ordinary case, and a note about its absence on every listing
+        # is a line people learn to scroll past.
         out["notes"].append(
             "no instruments.md in any layer - nothing is prefilled and that "
             "is not a scaffold defect")
@@ -3861,6 +3880,29 @@ def confirmed_keys(text: str) -> set:
     return out
 
 
+def outside_prefilled_blocks(text: str) -> str:
+    """The file with every prefilled block cut out.
+
+    A block runs from its marker line to the first blank line, which is how
+    `prefill` writes one. Item 161: a key confirmed INSIDE one instrument's
+    block is a fact about that instrument, and reading the whole file made it
+    count as recorded for every other instrument prefilled later. Only what
+    the project records outside every block outranks a facility default.
+    """
+    kept: list = []
+    inside = False
+    for line in text.splitlines():
+        if PREFILL_MARKER_RE.match(line):
+            inside = True
+            continue
+        if inside:
+            if not line.strip():
+                inside = False
+            continue
+        kept.append(line)
+    return "\n".join(kept)
+
+
 def prefilled_blocks(text: str) -> list[str]:
     """Which instrument blocks have already been prefilled into this file."""
     return [m.group(1) for m in PREFILL_MARKER_RE.finditer(text)]
@@ -3868,8 +3910,9 @@ def prefilled_blocks(text: str) -> list[str]:
 
 def render_prefill(name: str, keys: dict, skipped: dict,
                    layer: str = "drop-zone", label: str = "",
-                   key_layers: dict | None = None) -> str:
-    lines = [PREFILL_MARKER % (layer, name,
+                   key_layers: dict | None = None,
+                   filename: str = "instruments.md") -> str:
+    lines = [PREFILL_MARKER % (layer, filename, name,
                                datetime.date.today().isoformat()),
              # NOT `# source: ...`. `PREFILL_KEY_RE` in manuscript.py reads
              # any `# <lowercase>: <value>` under this marker as a prefilled
@@ -3882,6 +3925,12 @@ def render_prefill(name: str, keys: dict, skipped: dict,
              "# says so, and the methods paragraph will carry a "
              "**[FLAG: ...]**",
              "# rather than this number."]
+    if filename == "software.md":
+        # No version key exists, on purpose: the version is chosen per
+        # dataset, so a pack value would be right for somebody else's data.
+        # Starts `# --` so PREFILL_KEY_RE never reads it as a key.
+        lines.append("# -- no version here: the pack records none. Write the "
+                     "version this project ran --")
     key_layers = key_layers or {}
     for key, val in keys.items():
         from_layer = key_layers.get(key, "")
@@ -3895,14 +3944,24 @@ def render_prefill(name: str, keys: dict, skipped: dict,
 
 
 def prefill(root: str, wanted: list[str], dry_run: bool = False,
-            resources: str = "") -> dict:
-    """Write commented facility defaults into data/methods_facts.yml."""
+            resources: str = "", software: list[str] | None = None) -> dict:
+    """Write commented facility defaults into data/methods_facts.yml.
+
+    `wanted` names instrument blocks and `software` names program blocks
+    from the pack's `software.md` (methods-notebook 2). Both are written the
+    same way: commented out, sourced, counted as missing until confirmed.
+    """
     parsed = merged_instrument_blocks(resources)
+    progs = merged_instrument_blocks(resources, "software.md")
     res = {"project": os.path.abspath(root),
-           "source": ", ".join(parsed["sources"]) or "(no layer holds one)",
+           "source": ", ".join(parsed["sources"] + progs["sources"])
+                     or "(no layer holds one)",
            "layers": parsed["layers"],
+           "software_layers": progs["layers"],
            "available": [b["name"] for b in parsed["blocks"]],
-           "notes": list(parsed["notes"]), "written": [], "skipped": [],
+           "available_software": [b["name"] for b in progs["blocks"]],
+           "notes": list(parsed["notes"]) + list(progs["notes"]),
+           "written": [], "skipped": [],
            "already": [], "unknown": [], "dry_run": dry_run}
 
     facts_path = os.path.join(root, "data", "methods_facts.yml")
@@ -3911,13 +3970,19 @@ def prefill(root: str, wanted: list[str], dry_run: bool = False,
             "no data/methods_facts.yml in this project - scaffold it first")
         return res
     text = _read_utf8(facts_path)
-    have = confirmed_keys(text)
+    have = confirmed_keys(outside_prefilled_blocks(text))
     done = prefilled_blocks(text)
 
-    by_name = {b["name"]: b for b in parsed["blocks"]}
+    by_name: dict[str, dict] = {b["name"]: {**b, "file": "instruments.md"}
+                                for b in parsed["blocks"]}
+    by_prog: dict[str, dict] = {b["name"]: {**b, "file": "software.md"}
+                                for b in progs["blocks"]}
+    requests: list[tuple[str, dict[str, dict]]] = (
+        [(n, by_name) for n in wanted]
+                + [(n, by_prog) for n in (software or [])])
     additions = []
-    for name in wanted:
-        block = by_name.get(name)
+    for name, table in requests:
+        block = table.get(name)
         if block is None:
             # Named but not found. Reported rather than ignored: a typo in an
             # instrument name would otherwise look like a facility record that
@@ -3944,8 +4009,9 @@ def prefill(root: str, wanted: list[str], dry_run: bool = False,
         additions.append(render_prefill(
             name, keys, skipped, layer=block.get("layer", "drop-zone"),
             label=block.get("label", ""),
-            key_layers=block.get("key_layers")))
+            key_layers=block.get("key_layers"), filename=block["file"]))
         res["written"].append({"block": name, "keys": sorted(keys),
+                               "file": block["file"],
                                "layer": block.get("layer", "drop-zone"),
                                "left_alone": sorted(skipped)})
 
@@ -3964,6 +4030,9 @@ def print_prefill(res: dict) -> None:
     print(f"{res['source']}")
     if res["available"]:
         print("  blocks available: " + ", ".join(res["available"]))
+    if res.get("available_software"):
+        print("  software available: "
+              + ", ".join(res["available_software"]))
     for name in res["unknown"]:
         print(f"  UNKNOWN  {name!r} is not a block in this file")
     for w in res["written"]:
@@ -5144,6 +5213,11 @@ def main() -> int:
                     dest="instruments",
                     help="a block name from resources/instruments.md; repeat "
                          "for more. Omit to list what is available")
+    pf.add_argument("--software", action="append", default=[],
+                    dest="software",
+                    help="a program block from the pack's software.md; "
+                         "repeat for more. Written commented out, like an "
+                         "instrument, with no version")
     pf.add_argument("--resources", default="",
                     help="an alternative resources/ folder")
     pf.add_argument("--dry-run", action="store_true")
@@ -5465,7 +5539,7 @@ def main() -> int:
             print(f"No such directory: {args.path}", file=sys.stderr)
             return 2
         res = prefill(args.path, args.instruments, dry_run=args.dry_run,
-                      resources=args.resources)
+                      resources=args.resources, software=args.software)
         if args.json:
             print(json.dumps(res, indent=2, ensure_ascii=False))
         else:

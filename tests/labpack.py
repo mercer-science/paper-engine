@@ -942,6 +942,198 @@ def test_prefill_with_no_pack_is_unchanged() -> None:
               res["notes"])
 
 
+TWO_SCOPES = ("# Instruments\n\n"
+              "## Fixture Scope (TEM)\n\n```yaml\n"
+              "instrument_make: Fixture Co\n"
+              "instrument_model: Fixture Model One\n"
+              "detector: Fixture Camera\n```\n\n"
+              "## Second Fixture Scope (SEM)\n\n```yaml\n"
+              "instrument_make: Other Fixture Co\n"
+              "instrument_model: Fixture Model Two\n```\n")
+
+
+def test_prefill_confirming_one_key_keeps_the_rest() -> None:
+    section("item 160 - confirming one key does not hide the rest of its block")
+
+    with Sandbox() as sb:
+        pack = sb.install_pack()
+        write(os.path.join(pack, "instruments.md"), TWO_SCOPES)
+        proj = _project(sb)
+        sc.prefill(proj, ["Fixture Scope (TEM)"])
+        path = os.path.join(proj, "data", "methods_facts.yml")
+        facts = read(path)
+        before = ms._unconfirmed_prefill(facts).get("Fixture Scope (TEM)", [])
+        check("three keys are unconfirmed after the prefill",
+              sorted(before) == ["detector", "instrument_make",
+                                 "instrument_model"], before)
+
+        # Confirming a key IS deleting its '#', which is the line the old
+        # reader stopped at.
+        write(path, facts.replace("# instrument_make: Fixture Co",
+                                  "instrument_make: Fixture Co"))
+        after = ms._unconfirmed_prefill(read(path)).get(
+            "Fixture Scope (TEM)", [])
+        check("confirming the FIRST key leaves the other two unconfirmed",
+              sorted(after) == ["detector", "instrument_model"], after)
+        check("and the confirmed one is no longer listed",
+              "instrument_make" not in after, after)
+
+
+def test_prefill_key_confirmed_in_another_block() -> None:
+    section("item 161 - a key confirmed in one block is that block's alone")
+
+    with Sandbox() as sb:
+        pack = sb.install_pack()
+        write(os.path.join(pack, "instruments.md"), TWO_SCOPES)
+        proj = _project(sb)
+        path = os.path.join(proj, "data", "methods_facts.yml")
+        sc.prefill(proj, ["Fixture Scope (TEM)"])
+        write(path, read(path).replace("# instrument_make: Fixture Co",
+                                       "instrument_make: Fixture Co"))
+
+        res = sc.prefill(proj, ["Second Fixture Scope (SEM)"])
+        facts = read(path)
+        check("the second instrument is written",
+              bool(res["written"]) and res["written"][0]["block"]
+              == "Second Fixture Scope (SEM)", res)
+        check("WITH its own make, not skipped as already recorded",
+              "# instrument_make: Other Fixture Co" in facts,
+              facts[-700:])
+        check("and nothing is reported as left alone",
+              res["written"][0]["left_alone"] == [], res["written"])
+
+        # A key the project records OUTSIDE every block still outranks.
+        write(path, "instrument_model: Measured Here\n" + read(path))
+        proj_res = sc.prefill(proj, ["Second Fixture Scope (SEM)"])
+        check("a re-run still does not write the block twice",
+              proj_res["already"] == ["Second Fixture Scope (SEM)"], proj_res)
+        proj2 = _project(sb, "proj2")
+        p2 = os.path.join(proj2, "data", "methods_facts.yml")
+        write(p2, "instrument_model: Measured Here\n" + read(p2))
+        r2 = sc.prefill(proj2, ["Second Fixture Scope (SEM)"])
+        check("a key recorded outside every block is still left alone",
+              r2["written"][0]["left_alone"] == ["instrument_model"],
+              r2["written"])
+
+
+SOFTWARE_MD = ("# Software\n\nOne block per program.\n\n"
+               "## Fixture Aligner\n\n"
+               "Refines an alignment. **It does not make one.**\n\n"
+               "```yaml\n"
+               "software_name: Fixture Aligner\n"
+               "software_step: refine the tilt-series alignment\n"
+               "software_citation: \"doi:10.0000/fixture.1 - a fixture\"\n"
+               "software_code: https://example.org/fixture-aligner\n"
+               "```\n\n"
+               "## Fixture Denoiser\n\n"
+               "Denoises. **Averaging goes back to the undenoised data.**\n\n"
+               "```yaml\n"
+               "software_name: Fixture Denoiser\n"
+               "software_step: denoise before picking\n"
+               "```\n\n"
+               "## Fixture Picking\n\n"
+               "<!-- not-a-program -->\n"
+               "A technique; the package is not named.\n")
+
+
+def test_prefill_software() -> None:
+    section("B - the pack's software, prefilled, commented out")
+
+    with Sandbox() as sb:
+        pack = sb.install_pack()
+        write(os.path.join(pack, "software.md"), SOFTWARE_MD)
+        proj = _project(sb)
+        path = os.path.join(proj, "data", "methods_facts.yml")
+
+        listing = sc.prefill(proj, [])
+        check("the listing offers the software blocks",
+              listing.get("available_software")
+              == ["Fixture Aligner", "Fixture Denoiser"], listing)
+        check("and keeps them apart from the instruments",
+              "Fixture Aligner" not in listing["available"]
+              and "Fixture Scope (TEM)" in listing["available"], listing)
+        check("a not-a-program block is neither offered nor reported",
+              "Fixture Picking" not in (listing.get("available_software")
+                                         or [])
+              and not any("Fixture Picking" in n for n in listing["notes"]),
+              listing)
+        check("the listing writes nothing",
+              "prefilled from" not in read(path))
+
+        res = sc.prefill(proj, [], software=["Fixture Aligner"])
+        facts = read(path)
+        check("the program is written", bool(res["written"])
+              and res["written"][0]["block"] == "Fixture Aligner", res)
+        check("the marker names software.md and its layer",
+              "# --- prefilled from pack:software.md (Fixture Aligner)"
+              in facts, [ln for ln in facts.splitlines()
+                         if "prefilled from" in ln])
+        check("every key arrives COMMENTED OUT",
+              "# software_name: Fixture Aligner" in facts
+              and "# software_citation: doi:10.0000/fixture.1" in facts
+              and not re.search(r"^software_name:", facts, re.M),
+              facts[-800:])
+        check("and the block tells the member to record their version",
+              "version" in facts[facts.index("(Fixture Aligner)"):].lower(),
+              facts[-800:])
+        un = ms._unconfirmed_prefill(facts).get("Fixture Aligner", [])
+        check("manuscript.py counts the software keys as unconfirmed",
+              sorted(un) == ["software_citation", "software_code",
+                             "software_name", "software_step"], un)
+        check("and the version line is not mistaken for a key",
+              "record" not in un and "version" not in un, un)
+
+        again = sc.prefill(proj, [], software=["Fixture Aligner"])
+        check("a re-run does not write it twice",
+              again["already"] == ["Fixture Aligner"], again)
+
+        # Every program block names software_name. Item 161 is what makes a
+        # second program possible at all once the first is confirmed.
+        write(path, read(path).replace("# software_name: Fixture Aligner",
+                                       "software_name: Fixture Aligner"))
+        second = sc.prefill(proj, [], software=["Fixture Denoiser"])
+        check("a second program carries its OWN name after the first is "
+              "confirmed", "# software_name: Fixture Denoiser" in read(path)
+              and second["written"][0]["left_alone"] == [], second)
+
+        bad = sc.prefill(proj, [], software=["No Such Program"])
+        check("an unknown program is reported, not ignored",
+              bad["unknown"] == ["No Such Program"], bad)
+
+    check("the two marker readers are the same pattern",
+          sc.PREFILL_MARKER_RE.pattern == ms.PREFILL_MARKER_RE.pattern,
+          [sc.PREFILL_MARKER_RE.pattern, ms.PREFILL_MARKER_RE.pattern])
+    check("and both still read the pre-layer instruments marker",
+          bool(ms.PREFILL_MARKER_RE.search(
+              "# --- prefilled from resources/instruments.md (X), "
+              "2026-09-07 ---")), "")
+
+    with Sandbox() as sb:
+        pack = sb.install_pack()
+        write(os.path.join(pack, "software.md"), SOFTWARE_MD)
+        proj = _project(sb)
+        p = subprocess.run([sys.executable, os.path.join(TOOLS, "scaffold.py"),
+                            "prefill", proj, "--software", "Fixture Denoiser",
+                            "--json"], capture_output=True, text=True,
+                           encoding="utf-8", errors="replace", timeout=60)
+        try:
+            payload = json.loads(p.stdout)
+        except ValueError:
+            payload = {}
+        check("the CLI takes --software",
+              bool(p.returncode == 0 and payload.get("written")
+                   and payload["written"][0]["block"] == "Fixture Denoiser"),
+              p.stdout[-600:] + p.stderr[-600:])
+
+    with Sandbox() as sb:
+        sb.install_pack()
+        proj = _project(sb)
+        res = sc.prefill(proj, [])
+        check("a pack with no software.md lists no software, silently",
+              res.get("available_software") == []
+              and not any("software" in n for n in res["notes"]), res)
+
+
 # ---------------------------------------------------------------------------
 # Step 8 - the live inventory read (5)
 # ---------------------------------------------------------------------------
@@ -1933,6 +2125,345 @@ def test_brief_cli() -> None:
         check("a refusal exits 2", rc == 2, out)
 
 
+# ---------------------------------------------------------------------------
+# C - plan/methods_notebook.md (specs/methods-notebook-2026-09-28.md 3)
+# ---------------------------------------------------------------------------
+
+NOTEBOOK_SOPS_EXTRA = ("\n## Processing on the Fixture Cluster\n\n"
+                       "Run the Fixture Aligner script over every tilt "
+                       "series. **Never run it on the login node.**\n")
+
+
+def _notebook_pack(sb, **kw) -> str:
+    path = _brief_pack(sb, **kw)
+    write(os.path.join(path, "sops.md"), BRIEF_SOPS + NOTEBOOK_SOPS_EXTRA)
+    write(os.path.join(path, "software.md"), SOFTWARE_MD)
+    return path
+
+
+NOTEBOOK_BUNDLE = {
+    "steps": [
+        {"step": "Glow Discharge on the Quorum Fixture",
+         "todo": ["Book the glow discharger for the freezing morning",
+                  "Glow discharge at 25 mA for 30 s"],
+         "record": ["The grid lot"]},
+        {"step": "Fixture Aligner",
+         "todo": ["Run it on the three best tilt series first"],
+         "decided": ["Three tilt series, the three with the most beads"]},
+        {"step": "Culture Growth for the Fixture Route",
+         "todo": ["Start the culture 2-3 days before freezing"]},
+    ],
+    "needs": ["A carbon grid box for the glow-discharge morning"],
+}
+
+
+def test_notebook_unnarrowed() -> None:
+    section("notebook - with no bundle, every step, and it says so")
+
+    with Sandbox() as sb:
+        _notebook_pack(sb)
+        proj = _project(sb)
+        res = lp.notebook(proj)
+        check("the write succeeded", res["state"] == "written", res)
+        check("it lands at plan/methods_notebook.md",
+              res["path"].replace(os.sep, "/").endswith(
+                  "plan/methods_notebook.md"), res["path"])
+        text = read(res["path"])
+
+        check("line 1 is the banner",
+              text.splitlines()[0] == "<!-- labpack-notebook -->",
+              text[:80])
+        check("the header says it is a to-do list and not a methods fact",
+              "to-do list" in text[:1500]
+              and "nothing here is a methods fact" in text[:1500].lower(),
+              text[:1500])
+        check("and says it has not been narrowed to this project",
+              "not been narrowed" in text[:2500], text[:2500])
+        for i, name in enumerate(
+                ["Culture Growth for the Fixture Route",
+                 "Grid Vitrification on the Fixture Plunger",
+                 "Glow Discharge on the Quorum Fixture"], start=1):
+            check(f"route step {i} is a numbered step",
+                  f"### {i}. {name}" in text, text[:600])
+        check("What We Need comes BEFORE the steps",
+              0 < text.index("## What We Need") < text.index("## Steps"),
+              text[:900])
+        check("a step with no bundle bullets points at the brief",
+              "- [ ] Read this step in `plan/lab_pack_brief.md`" in text,
+              text)
+        check("the protocol link is carried, verbatim",
+              "[Box](https://example.invalid/1)" in text, text)
+        check("the log section exists to be written in",
+              re.search(r"^## Your Log\s*$", text, re.M) is not None,
+              text[-400:])
+
+
+def test_notebook_watch_out_quotes_the_pack() -> None:
+    section("notebook - Watch Out is the pack's own emphasis, verbatim")
+
+    with Sandbox() as sb:
+        _notebook_pack(sb)
+        proj = _project(sb)
+        text = lp.notebook(proj)["text"]
+        block = text[text.index("### 1. Culture"):text.index("### 2.")]
+        check("a paragraph opening with a constraint LABEL is quoted whole",
+              "**What it rules out.** Once concentrated, grids must be "
+              "frozen within **30 minutes** or the cells shed their "
+              "flagella." in block, block)
+        check("a bold span with no constraint word is not quoted",
+              "Numbers that set the schedule" not in block, block)
+        proc = text[text.index("Processing on the Fixture Cluster"):]
+        proc = proc[:proc.index("\n### ") if "\n### " in proc
+                    else len(proc)]
+        check("a constraint bold span elsewhere is quoted",
+              "**Never run it on the login node.**" in proc, proc)
+        check("the quote is dated with the pack's curation",
+              "curated 2026-09-09" in block, block)
+
+
+def test_notebook_uses_and_needs() -> None:
+    section("notebook - what each step uses, and What We Need")
+
+    with Sandbox() as sb:
+        _notebook_pack(sb)
+        proj = _project(sb)
+        text = lp.notebook(proj)["text"]
+        need = text[text.index("## What We Need"):text.index("## Steps")]
+        check("an instrument a step names is in What We Need",
+              "Quorum Fixture Glow Discharger (BYU)" in need, need)
+        check("with the step that uses it",
+              re.search(r"Quorum Fixture Glow Discharger \(BYU\) - step 3",
+                        need) is not None, need)
+        check("software a route step names is attached by token",
+              re.search(r"Fixture Aligner - step 5", need) is not None, need)
+        check("an instrument no chosen step uses is not needed",
+              "Fixture Scope (TEM)" not in need, need)
+        check("What We Need is tick boxes",
+              "- [ ] Quorum Fixture Glow Discharger (BYU)" in need, need)
+
+    # Measured on the real pack: a program matched on its HEADING attached
+    # to every step sharing one of the heading's words. It is matched on the
+    # name its yaml half gives it.
+    with Sandbox() as sb:
+        pack = _notebook_pack(sb)
+        write(os.path.join(pack, "software.md"), SOFTWARE_MD
+              + "\n## Cluster Scripts\n\nA helper.\n\n```yaml\n"
+                "software_name: Quiet Tool\n```\n")
+        proj = _project(sb)
+        text = lp.notebook(proj)["text"]
+        check("a program whose heading word a step uses, but whose NAME no "
+              "step uses, attaches to nothing",
+              "Cluster Scripts" not in text.split("## Steps", 1)[0], text)
+
+
+def test_notebook_narrowed() -> None:
+    section("notebook - a bundle narrows it, in the project's order")
+
+    with Sandbox() as sb:
+        _notebook_pack(sb)
+        proj = _project(sb)
+        res = lp.notebook(proj, bundle=NOTEBOOK_BUNDLE)
+        check("the write succeeded", res["state"] == "written", res)
+        text = res["text"]
+        check("the steps are in the BUNDLE's order, across both files",
+              "### 1. Glow Discharge on the Quorum Fixture" in text
+              and "### 2. Fixture Aligner" in text
+              and "### 3. Culture Growth for the Fixture Route" in text,
+              text[:2500])
+        check("a step the bundle left out is not there",
+              "Grid Vitrification" not in text.split("## Steps", 1)[1],
+              text)
+        check("and it no longer says it is unnarrowed",
+              "not been narrowed" not in text, text[:2500])
+        check("a todo is a tick box",
+              "- [ ] Book the glow discharger for the freezing morning"
+              in text, text)
+        check("a decision is carried",
+              "Three tilt series, the three with the most beads" in text,
+              text)
+        check("what to record is under Write Down, naming methods_facts",
+              re.search(r"Write Down.*methods_facts\.yml.*\n+- The grid lot",
+                        text) is not None, text)
+        check("a need the user named is in What We Need",
+              "- [ ] A carbon grid box for the glow-discharge morning"
+              in text.split("## Steps", 1)[0], text[:2500])
+        check("a software step uses itself",
+              re.search(r"- \[ \] Fixture Aligner - step 2",
+                        text.split("## Steps", 1)[0]) is not None,
+              text[:2500])
+        check("a software step with bullets does not add the default",
+              "Read this step in `software.md`" not in text, text)
+        check("a program step always ends by asking for the version",
+              "- The version of Fixture Aligner you ran" in text, text)
+        check("and a route step does not",
+              "The version of Glow Discharge" not in text, text)
+
+
+def test_notebook_refusals() -> None:
+    section("notebook - what it refuses, and the number rule")
+
+    with Sandbox() as sb:
+        _notebook_pack(sb)
+        proj = _project(sb)
+        dest = os.path.join(proj, "plan", "methods_notebook.md")
+
+        def attempt(bundle, **kw):
+            return lp.notebook(proj, bundle=bundle, **kw)
+
+        res = attempt({"steps": [{"step": "A Step Nobody Has"}]})
+        check("an unknown step is refused", res["state"] == "refused", res)
+        check("listing the headings of BOTH files",
+              any("Culture Growth for the Fixture Route" in e
+                  and "Fixture Denoiser" in e for e in res["errors"]),
+              res["errors"])
+        check("and nothing is written", not os.path.exists(dest))
+
+        res = attempt({"steps": [{"step": "Fixture Aligner"},
+                                 {"step": "fixture aligner"}]})
+        check("two entries for one step are refused",
+              res["state"] == "refused", res)
+
+        res = attempt({"steps": [{"step": "Fixture Aligner"}],
+                       "software": ["No Such Program"],
+                       "instruments": ["No Such Scope"]})
+        check("an unknown software or instrument name is refused",
+              res["state"] == "refused"
+              and any("No Such Program" in e for e in res["errors"])
+              and any("No Such Scope" in e for e in res["errors"]),
+              res["errors"])
+
+        res = attempt({"steps": [{"step": "Glow Discharge on the Quorum "
+                                          "Fixture",
+                                  "todo": ["Glow discharge for 45 s"]}]})
+        check("a number the pack does not carry is REFUSED",
+              res["state"] == "refused"
+              and any("45" in e and "Glow discharge for 45 s" in e
+                      for e in res["errors"]), res["errors"])
+        res = attempt({"steps": [{"step": "Glow Discharge on the Quorum "
+                                          "Fixture",
+                                  "todo": ["Glow discharge for 45 s"],
+                                  "decided": ["45 s, for the gold grids"]}]})
+        check("the same number is allowed when the user decided it",
+              res["state"] == "written", res["errors"])
+        res = attempt({"steps": [{"step": "Glow Discharge on the Quorum "
+                                          "Fixture"}],
+                       "needs": ["Ten 400-mesh grids"]})
+        check("a need with an unsourced number is refused too",
+              res["state"] == "refused"
+              and any("400" in e for e in res["errors"]), res["errors"])
+
+        res = lp.notebook(proj, out=os.path.join(proj, "data", "nb.md"))
+        check("a destination under data/ is refused",
+              res["state"] == "refused"
+              and any("methods" in e.lower() for e in res["errors"]),
+              res["errors"])
+
+        write(dest, "# My own bench notes\n")
+        res = lp.notebook(proj)
+        check("a file this command did not write is not overwritten",
+              res["state"] == "refused" and "My own bench notes"
+              in read(dest), res)
+        check("and --force is named as the way through",
+              any("--force" in e for e in res["errors"]), res["errors"])
+
+
+def test_notebook_carries_ticks_and_log() -> None:
+    section("notebook - regeneration keeps the ticks and the log")
+
+    with Sandbox() as sb:
+        _notebook_pack(sb)
+        proj = _project(sb)
+        path = lp.notebook(proj, bundle=NOTEBOOK_BUNDLE)["path"]
+        text = read(path)
+        text = text.replace(
+            "- [ ] Book the glow discharger for the freezing morning",
+            "- [x] Book the glow discharger for the freezing morning")
+        text = text.rstrip() + "\n\n- 2026-09-30: booked for Tuesday.\n"
+        write(path, text)
+
+        changed = json.loads(json.dumps(NOTEBOOK_BUNDLE))
+        changed["steps"][0]["todo"][1] = "Glow discharge at 25 mA, 30 s, air"
+        again = lp.notebook(proj, bundle=changed)
+        new = read(again["path"])
+        check("a ticked bullet whose text is unchanged stays ticked",
+              "- [x] Book the glow discharger for the freezing morning"
+              in new, new)
+        check("a bullet whose text changed starts unticked",
+              "- [ ] Glow discharge at 25 mA, 30 s, air" in new, new)
+        check("the member's log line survives",
+              "2026-09-30: booked for Tuesday." in new, new[-500:])
+        check("the log heading is not duplicated",
+              len(re.findall(r"^## Your Log\s*$", new, re.M)) == 1, new)
+        check("the carry-forward is reported",
+              again.get("carried_log") is True
+              and again.get("carried_ticks") == 1, again)
+
+
+def test_notebook_no_pack_two_packs_check_list_cli() -> None:
+    section("notebook - no pack, two packs, --check, --list and the CLI")
+
+    with Sandbox() as sb:
+        proj = _project(sb)
+        res = lp.notebook(proj)
+        check("no pack: no file and no error",
+              res["state"] == "no-pack" and not res["errors"]
+              and not os.path.exists(os.path.join(proj, "plan",
+                                                  "methods_notebook.md")),
+              res)
+
+    with Sandbox() as sb:
+        _notebook_pack(sb)
+        _notebook_pack(sb, name="second-resource-pack", display="Second Lab")
+        proj = _project(sb)
+        check("two packs stop and ask",
+              lp.notebook(proj)["state"] == "ambiguous")
+
+    with Sandbox() as sb:
+        _notebook_pack(sb)
+        proj = _project(sb)
+        listing = lp.notebook_list()
+        check("--list names both files' steps",
+              "Processing on the Fixture Cluster" in listing["route_steps"]
+              and "Fixture Aligner" in listing["software"], listing)
+        check("and the instruments",
+              "Fixture Scope (TEM)" in listing["instruments"], listing)
+        check("and names the route file",
+              listing["route_source"] == "sops.md", listing)
+
+        lp.notebook(proj)
+        check("a notebook from the installed pack is current",
+              lp.notebook_check(proj)["state"] == "current")
+        sb.install_pack(version="2026.9.24")
+        stale = lp.notebook_check(proj)
+        check("a pack that has moved makes it stale, naming both versions",
+              stale["state"] == "stale" and "2026.9.9" in stale["line"]
+              and "2026.9.24" in stale["line"], stale)
+
+    with Sandbox() as sb:
+        _notebook_pack(sb)
+        proj = _project(sb)
+        bundle = os.path.join(sb.dir, "nb.json")
+        write(bundle, json.dumps(NOTEBOOK_BUNDLE))
+        rc, out, err = run("notebook", "--project", proj, "--bundle", bundle,
+                           "--dry-run", "--json")
+        check("--dry-run exits 0 and writes nothing",
+              rc == 0 and json.loads(out)["state"] == "dry-run"
+              and not os.path.exists(os.path.join(proj, "plan",
+                                                  "methods_notebook.md")),
+              out + err)
+        rc, out, err = run("notebook", "--project", proj, "--bundle", bundle)
+        check("the real run exits 0 and names the path",
+              rc == 0 and "methods_notebook.md" in out, out + err)
+        rc, out, _ = run("notebook", "--project", proj, "--list", "--json")
+        check("--list over the CLI", rc == 0
+              and "Fixture Aligner" in json.loads(out)["software"], out)
+        rc, out, _ = run("notebook", "--project", proj, "--check")
+        check("--check over the CLI", rc == 0 and "current" in out, out)
+        rc, out, _ = run("notebook", "--project", proj, "--out",
+                         os.path.join(proj, "data", "x.md"), "--json")
+        check("a refusal exits 2", rc == 2, out)
+
+
 def main() -> int:
     test_dropzone_ladder()
     test_dropzone_at_risk_by_name()
@@ -1953,6 +2484,9 @@ def main() -> int:
     test_prefill_marker_names_its_layer()
     test_prefill_reads_the_old_marker_forever()
     test_prefill_with_no_pack_is_unchanged()
+    test_prefill_confirming_one_key_keeps_the_rest()
+    test_prefill_key_confirmed_in_another_block()
+    test_prefill_software()
     test_a_prose_only_layer_says_so_once()
     test_inventory_from_fallback_path()
     test_unknown_is_never_out_of_stock()
@@ -1976,6 +2510,13 @@ def main() -> int:
     test_brief_check_reports_staleness()
     test_brief_workflow_source_is_the_packs_to_name()
     test_brief_cli()
+    test_notebook_unnarrowed()
+    test_notebook_watch_out_quotes_the_pack()
+    test_notebook_uses_and_needs()
+    test_notebook_narrowed()
+    test_notebook_refusals()
+    test_notebook_carries_ticks_and_log()
+    test_notebook_no_pack_two_packs_check_list_cli()
 
     print(f"\n{PASSED}/{PASSED + FAILED} passed"
           + (f", {FAILED} FAILED" if FAILED else ""))

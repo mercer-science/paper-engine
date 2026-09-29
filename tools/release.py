@@ -171,6 +171,14 @@ def version_staleness(root: str) -> dict:
 
     out["version_commit"] = _last_commit(root, [MANIFEST], VERSION_PICKAXE)
     present = [c for c in CONTENT if os.path.exists(os.path.join(root, c))]
+    if os.path.isfile(os.path.join(root, "lab.yml")):
+        # Item 162: a lab pack ships EVERY root-level .md, because that is
+        # what labpack.pack_documents reads. A fixed list of names cannot see
+        # a file added after it was written. The engine repository has no
+        # lab.yml, and its root .md are documentation rather than shipped.
+        present += sorted(n for n in os.listdir(root)
+                          if n.endswith(".md") and n not in present
+                          and os.path.isfile(os.path.join(root, n)))
     out["content_commit"] = _last_commit(root, present)
     if not out["content_commit"]:
         out["state"] = "current"

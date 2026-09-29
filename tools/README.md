@@ -376,7 +376,7 @@ Spec: `specs/setup-project-directory.md`. Caller: `skills/setup-project-director
 | `float lint <path>` | What a float script gets wrong that a static read can catch, including a float marked **drawn** that holds no PowerPoint source. `--float "Figure 2"`. **Always exits 0** |
 | `mock-floats <path> --bundle <json>` | Fill the pre-made float slots with runnable scripts over `data/mock_data/`. `--force`, `--dry-run` |
 | `image-floats <path> --bundle <json>` | Fill figure slots with composed light-grey panels, each carrying a sentence saying what image is expected in it. **Not mock** — nothing is fabricated, so there is no watermark and the co-author `.docx` builds it. `--force`, `--dry-run` |
-| `prefill <path>` | Write commented facility defaults from `resources/instruments.md` into `data/methods_facts.yml`. `--instrument "..."` (repeatable), `--resources`, `--dry-run` |
+| `prefill <path>` | Write commented facility defaults from `instruments.md` (and the pack's `software.md`) into `data/methods_facts.yml`. `--instrument "..."` and `--software "..."` (both repeatable), `--resources`, `--dry-run`. A software block carries no version, on purpose |
 | `harvest <path>` | Read the acquisition settings the instrument wrote into the project's own image files and record them as **fact**. `--under "<subfolder>"`, `--dry-run` |
 
 `--json` works on either side of the subcommand, as with `pubmed.py`.

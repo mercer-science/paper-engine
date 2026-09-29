@@ -1364,6 +1364,85 @@ def test_merge_refusals():
         shutil.rmtree(root, ignore_errors=True)
 
 
+def _fixture_pack(root):
+    """A pack on disk, resolved through $PAPER_ENGINE_LAB_PACK."""
+    pack = os.path.join(root, "fixture-pack")
+    os.makedirs(os.path.join(pack, ".claude-plugin"))
+    with open(os.path.join(pack, ".claude-plugin", "plugin.json"), "w",
+              encoding="utf-8") as fh:
+        json.dump({"name": "fixture-pack", "version": "2026.9.9",
+                   "labPack": True}, fh)
+    with open(os.path.join(pack, "lab.yml"), "w", encoding="utf-8") as fh:
+        fh.write('pack: fixture-pack\ndisplay_name: "Fixture Lab"\n'
+                 'curated_on: "2026-09-09"\n')
+    with open(os.path.join(pack, "sops.md"), "w", encoding="utf-8") as fh:
+        fh.write("# SOPs\n\n## Glow Discharge on the Fixture Coater\n\n"
+                 "Negative, 15 mA, 30 s.\n")
+    with open(os.path.join(pack, "software.md"), "w", encoding="utf-8") as fh:
+        fh.write("# Software\n\n## Fixture Aligner\n\nRefines.\n")
+    return pack
+
+
+def test_pack_source_kind():
+    """specs/methods-notebook-2026-09-28.md 1 - a pack section is a source.
+
+    Before this, a proposal taken from the pack's SOP file was refused: the
+    pack is installed as a plugin, not under a `Resources/` folder, so the
+    lab's own documented setting could not be proposed from the one place a
+    pack-only lab keeps it.
+    """
+    section("merge - a pack section is a legal, CHECKED source (A)")
+
+    root, lab = make_lab()
+    saved = os.environ.get("PAPER_ENGINE_LAB_PACK")
+    try:
+        proj = scaffold_project(lab, name="pack_sources")
+
+        def with_source(src):
+            b = merge_bundle()
+            b["methods_proposed"]["sample_prep"]["glow_discharge"][
+                "source"] = src
+            return idea.merge(proj, b, dry_run=True)
+
+        res = with_source("pack:sops.md - Glow Discharge on the Fixture "
+                          "Coater")
+        check("with no pack installed, a pack source is refused",
+              any("no lab pack" in e.lower() for e in res["errors"]),
+              res["errors"])
+
+        os.environ["PAPER_ENGINE_LAB_PACK"] = _fixture_pack(root)
+        res = with_source("pack:sops.md - Glow Discharge on the Fixture "
+                          "Coater")
+        check("a pack section that exists is accepted",
+              not res["errors"], res["errors"])
+        res = with_source("pack: software.md - fixture ALIGNER")
+        check("the heading matches on case and padding, like the brief",
+              not res["errors"], res["errors"])
+        res = with_source("pack:sops.md - A Step the Pack Does Not Carry")
+        check("a heading the pack does not carry is refused",
+              any("does not carry" in e for e in res["errors"]),
+              res["errors"])
+        check("and the refusal lists the headings it does carry",
+              any("Glow Discharge on the Fixture Coater" in e
+                  for e in res["errors"]), res["errors"])
+        res = with_source("pack:nowhere.md - Anything")
+        check("a file the pack does not have is refused",
+              any("nowhere.md" in e for e in res["errors"]), res["errors"])
+        res = with_source("pack:sops.md")
+        check("a pack source with no heading is refused",
+              bool(res["errors"]), res["errors"])
+        res = with_source("I remember reading it")
+        check("and the neither-kind refusal now names all three kinds",
+              any("pack:" in e and "Resources/" in e for e in res["errors"]),
+              res["errors"])
+    finally:
+        if saved is None:
+            os.environ.pop("PAPER_ENGINE_LAB_PACK", None)
+        else:
+            os.environ["PAPER_ENGINE_LAB_PACK"] = saved
+        shutil.rmtree(root, ignore_errors=True)
+
+
 def test_resources_command():
     section("resources - read at Stage 2, from any path")
 
@@ -1501,6 +1580,7 @@ def main():
     test_merge_drafted_project()
     test_merge_cap_and_dedup()
     test_merge_refusals()
+    test_pack_source_kind()
     test_resources_command()
     test_resources_carries_the_pack()
 

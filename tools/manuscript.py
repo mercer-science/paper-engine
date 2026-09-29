@@ -5832,7 +5832,8 @@ def _recorded_fields(text: str) -> list[str]:
 # unconfirmed. Kept byte-identical to scaffold.py's copy on purpose;
 # tests/scaffold.py holds the two against each other.
 PREFILL_MARKER_RE = re.compile(
-    r"^#\s*---\s*prefilled from (?:[a-z-]+:|resources/)?instruments\.md\s*"
+    r"^#\s*---\s*prefilled from (?:[a-z-]+:|resources/)?"
+    r"(?:instruments|software)\.md\s*"
     r"\((.+)\),\s*\d{4}-\d{2}-\d{2}", re.M)
 PREFILL_KEY_RE = re.compile(r"^#\s*([a-z][A-Za-z_0-9]*):\s*\S")
 
@@ -5855,11 +5856,17 @@ def _unconfirmed_prefill(text: str) -> dict:
         start = end if nl < 0 else nl + 1
         keys = []
         for line in text[start:end].splitlines():
-            if not line.startswith("#"):
-                # The block ends at the first line that is not a comment: an
-                # uncommented key below it belongs to the file, not to this
-                # prefill.
+            if not line.strip():
+                # The block ends at the first BLANK line - `prefill` writes
+                # each block contiguous and separates blocks with one. Item
+                # 160: it used to end at the first line that was not a
+                # comment, and confirming a key IS deleting its `#`, so
+                # confirming the first key hid every key below it.
                 break
+            if not line.startswith("#"):
+                # A confirmed key inside the block. Not unconfirmed, and not
+                # the end of the block either.
+                continue
             km = PREFILL_KEY_RE.match(line)
             if km:
                 keys.append(km.group(1))

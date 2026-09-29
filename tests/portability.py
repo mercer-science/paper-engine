@@ -1637,6 +1637,55 @@ def test_version_bump_check() -> None:
         shutil.rmtree(repo, ignore_errors=True)
 
 
+def test_version_check_sees_every_pack_file() -> None:
+    section("item 162 - in a lab pack, every root .md is shipped content")
+
+    # labpack.py reads EVERY .md at a pack's root, so every one of them
+    # reaches a member. A fixed list of names cannot see a file added after
+    # it was written, and an edit to that file alone reported `current`.
+    repo = _scratch_plugin()
+    try:
+        with io.open(os.path.join(repo, "lab.yml"), "w", encoding="utf-8",
+                     newline=chr(10)) as fh:
+            fh.write("pack: scratch" + chr(10))
+        with io.open(os.path.join(repo, "a_new_pack_file.md"), "w",
+                     encoding="utf-8", newline=chr(10)) as fh:
+            fh.write("# New" + chr(10))
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-q", "-m", "a pack file")
+        rel.bump(repo)
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-q", "-m", "bump")
+        check("a bumped pack is current",
+              rel.version_staleness(repo)["state"], "current")
+
+        with io.open(os.path.join(repo, "a_new_pack_file.md"), "a",
+                     encoding="utf-8", newline=chr(10)) as fh:
+            fh.write("More." + chr(10))
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-q", "-m", "edit only the new file")
+        res = rel.version_staleness(repo)
+        check("an edit to a pack .md the old list never named is STALE",
+              res["state"], "stale", res.get("why"))
+
+    finally:
+        shutil.rmtree(repo, ignore_errors=True)
+
+    # The engine repository is not a pack: its root .md are docs, and
+    # CLAUDE.md moving must not demand a release.
+    repo = _scratch_plugin()
+    try:
+        with io.open(os.path.join(repo, "NOTES.md"), "w", encoding="utf-8",
+                     newline=chr(10)) as fh:
+            fh.write("# Notes" + chr(10))
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-q", "-m", "a doc edit")
+        check("with no lab.yml a root .md is not shipped content",
+              rel.version_staleness(repo)["state"], "current")
+    finally:
+        shutil.rmtree(repo, ignore_errors=True)
+
+
 def test_version_check_uses_G_not_S() -> None:
     section("6.4 - `git log -S` is the natural reach and is the WRONG tool")
 
@@ -1802,6 +1851,46 @@ def test_the_lab_pack_brief_has_callers_and_one_refusal() -> None:
               "lab_pack_brief" in read(path), False,
               "4: a pack value routed into methods_facts.yml is a facility "
               "number reaching print as a checked fact")
+
+
+def test_the_methods_notebook_has_callers_and_one_refusal() -> None:
+    """specs/methods-notebook-2026-09-28.md 3.7 - two writers, one refusal.
+
+    Same shape as the brief's test, for the same two reasons: a command with
+    no caller passes every one of its own checks for ever, and a to-do list
+    drafted into the methods section is a facility number reaching print.
+    """
+    section("methods notebook - two writers, one refusal (3.7)")
+
+    for name in ("idea-generation", "setup-project-directory"):
+        text = read(os.path.join(SKILLS_DIR, name, "SKILL.md"))
+        check(f"{name} writes the notebook",
+              "labpack.py notebook" in text, True,
+              "a file nobody is pointed at is item 96's shape")
+        check("...and says it is a to-do list, not a methods section",
+              "not a methods section" in text, True,
+              "3.1: the one sentence that keeps it out of the draft")
+    setup = read(os.path.join(SKILLS_DIR, "setup-project-directory",
+                              "SKILL.md"))
+    check("setup-project-directory defines the lab's methods in one place",
+          "The Lab's Methods, in Four Files" in setup, True,
+          "0: the ask was that it be explicitly defined")
+    check("...and offers the software prefill",
+          "--software" in setup, True, "2.2")
+    idea_skill = read(os.path.join(SKILLS_DIR, "idea-generation", "SKILL.md"))
+    check("idea-generation names the pack source kind",
+          "pack:<file>.md - <the section heading>" in idea_skill, True, "1")
+    template = read(os.path.join(ROOT, "tools", "project_template",
+                                 "CLAUDE.md"))
+    check("the project template names the notebook",
+          "plan/methods_notebook.md" in template, True, "3.7")
+
+    engine = [p for p in SKILL_TEXTS if "writing-engine" in p]
+    for path in engine:
+        rel = os.path.relpath(path, ROOT).replace(os.sep, "/")
+        check(f"{rel} does not read the methods notebook",
+              "methods_notebook" in read(path), False,
+              "3.7: a to-do list is not a record of what was done")
 
 
 def test_the_refresh_is_rate_limited_and_short() -> None:
@@ -2067,11 +2156,13 @@ def main() -> int:
     test_version_check_is_silent_without_git()
     test_every_skill_asks_before_it_starts()
     test_the_lab_pack_brief_has_callers_and_one_refusal()
+    test_the_methods_notebook_has_callers_and_one_refusal()
     test_the_refresh_is_rate_limited_and_short()
     test_offline_staleness_check()
     test_nothing_offers_to_send_anything_upstream()
     test_private_notes_are_never_tracked()
     test_version_check_uses_G_not_S()
+    test_version_check_sees_every_pack_file()
     test_version_bump_check()
     # Last: it reads what every grep above recorded.
     test_skill_reference_files_are_covered()

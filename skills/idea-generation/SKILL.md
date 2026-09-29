@@ -521,9 +521,10 @@ to first result.
   "idk"; name the load-bearing unknown and let the user decide.
 
 **Keep these answers step by step, because they are what fills the lab pack
-brief.** Every "we will do it this way", every "idk", and every number the
-user corrected belongs to a particular step of the lab's route, and at the end
-of Stage 6 they are written against that step in `plan/lab_pack_brief.md`. A
+brief and the methods notebook.** Every "we will do it this way", every "idk",
+and every number the user corrected belongs to a particular step of the lab's
+route, and at the end of Stage 6 they are written against that step in
+`plan/lab_pack_brief.md` and, as tick boxes, in `plan/methods_notebook.md`. A
 flat list of answers loses which step each one is about, and the step is the
 part the user needs three weeks later.
 
@@ -742,8 +743,11 @@ the writing engine.
 
 Offer it, once the guiding papers are settled: the Methods sections of the
 guiding papers and the lab's own SOPs both carry values the user would
-otherwise guess at. They go to `data/methods_proposed.yml`, **never** to
-`data/methods_facts.yml`.
+otherwise guess at. **When a pack resolved, read its SOP file (`sops.md`, or
+whatever `lab.yml`'s `workflow_source` names) and its `software.md` for this
+too** - the SOPs carry the lab's working settings, and `software.md` names the
+program for each processing step. They go to `data/methods_proposed.yml`,
+**never** to `data/methods_facts.yml`.
 
 **That separation is the whole point.** A value in `methods_facts.yml` is a
 fact about what we did, and `writing-engine` renders it into prose — so a
@@ -768,6 +772,13 @@ sample_prep:
     source: "Resources/Standard Operating Procedures/negative_stain.md"
     why: "The lab's own documented setting - likely correct as-is"
 ```
+
+**A pack section is the third legal source**, written
+`pack:<file>.md - <the section heading>` - for example
+`pack:sops.md - <a heading the SOP file carries>`. The engine checks it
+against the installed pack and refuses a file or heading the pack does not
+carry, so read the heading off the pack rather than typing it. With no pack
+installed a `pack:` source is refused.
 
 A proposed value with no source is not a proposal, it is a guess, and the
 engine refuses the bundle. So does a citation with no section, and so does one
@@ -858,6 +869,57 @@ Say one line about it when you show what was written — where it is, and that
 the `## Your Notes` section at the end is theirs and survives every
 regeneration. Re-running it later is free: `--check` says whether the pack has
 moved since.
+
+### The Methods Notebook — Written Beside the Brief
+
+**If a pack resolved, write `plan/methods_notebook.md` too**, right after the
+brief. Spec: `specs/methods-notebook-2026-09-28.md` §3. The brief is what the
+user reads; the notebook is what they tick at the bench: **What We Need** first,
+then every step of this project as tick boxes. A lab-notebook to-do list,
+not a methods section — nothing in it is a methods fact, and `writing-engine`
+never reads it.
+
+```bash
+python <tools>/labpack.py notebook --project "<project>" --list --json
+python <tools>/labpack.py notebook --project "<project>" --bundle nb.json --dry-run
+python <tools>/labpack.py notebook --project "<project>" --bundle nb.json
+```
+
+```json
+{
+  "steps": [
+    {"step": "<a heading --list printed: a route step OR a software.md program>",
+     "todo": ["what to do at this step, as the user or the pack said it"],
+     "decided": ["a value the user settled in Stage 5"],
+     "record": ["what to write down in methods_facts.yml at this step"]}
+  ],
+  "needs": ["a thing the user said the project needs - a strain, a grid type"],
+  "instruments": ["an instrument heading no step names but the project uses"],
+  "software": ["a software.md program no step names but the project uses"]
+}
+```
+
+Four rules, and each one is a way this goes wrong:
+
+- **The steps are this project's, in the order it will do them.** Pick them
+  from `--list` — route steps for the bench, `software.md` programs for the
+  processing — and put them in the order the user described. A step the
+  project does not do is left out; the brief still has every step.
+- **Every line is something the pack says or the user said.** `todo` is a
+  task, not a summary of the SOP. The engine writes the rest itself — what
+  each step uses, the protocol links, and the pack's own warnings, quoted.
+- **The number rule is enforced.** A number in a `todo`, `record` or `needs`
+  line must appear in the pack's text for that step (and the instruments and
+  programs it uses), or in that step's `decided` list. Otherwise the write
+  is refused, naming the line. The fix is to quote the pack's number or to
+  record the user's decision, never to drop the number to get past it.
+- **`record` is what the member writes into `methods_facts.yml`** at that
+  step — the per-grid log fields, the version of each program they ran. It
+  is a reminder of what to record, never a value.
+
+Ticks and `## Your Log` carry forward on every regeneration, so re-running it
+after the idea changes is safe. Say one line about it: where it is, and that
+it is the page to have open while the data is collected.
 
 ## Things that are wrong to do here
 
