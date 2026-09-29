@@ -38,6 +38,7 @@ import os
 import re
 import shutil
 import struct
+import subprocess
 import sys
 
 # Project names and titles routinely carry non-ASCII characters; the Windows
@@ -4822,7 +4823,6 @@ RAW_DATA_MARKER = "*.eer"
 
 
 def _git(root: str, *args: str) -> "subprocess.CompletedProcess[str]":
-    import subprocess
     return subprocess.run(["git", "-C", root, *args], capture_output=True,
                           text=True, encoding="utf-8", errors="replace")
 
@@ -4930,7 +4930,6 @@ def connect_github(root: str, repo: str = "", owner: str = "",
     created before the push so a missing `gh` stops at a clear instruction
     rather than a half-connected folder.
     """
-    import subprocess
     root = os.path.abspath(root)
     res: dict = {"path": root, "steps": [], "problems": [], "remote": "",
                  "created_repository": False, "proposed_repo": "",

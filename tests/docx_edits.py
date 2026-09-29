@@ -137,14 +137,26 @@ def test_fixtures_are_real_docx():
 
     # The committed fixture must be exactly what the builder makes, or the
     # builder stops being the document of record for what is being tested.
+    # The comparison is part by part, not byte by byte: the zip header records
+    # the OS that wrote it, and the deflate stream differs between zlib builds
+    # (Python 3.14 on Windows ships zlib-ng), so the same build is never
+    # byte-identical across machines. The parts themselves always are.
+    def parts(path):
+        with zipfile.ZipFile(path) as z:
+            return [(i.filename, z.read(i)) for i in z.infolist()]
+
     tmp = tempfile.mkdtemp(prefix="dxfix_")
     try:
         mk.build(tmp)
         for name in ("tracked_two_authors.docx", "field_codes.docx", "clean.docx"):
-            with open(os.path.join(tmp, name), "rb") as a, \
-                 open(os.path.join(FIXTURES, name), "rb") as b:
-                check(f"committed {name} is byte-identical to a fresh build",
-                      a.read() == b.read())
+            fresh = parts(os.path.join(tmp, name))
+            committed = parts(os.path.join(FIXTURES, name))
+            differ = [n for (n, a), (_, b) in zip(fresh, committed) if a != b]
+            check(f"committed {name} has the same parts as a fresh build",
+                  fresh == committed,
+                  f"parts differ: {differ}" if differ else
+                  f"part lists differ: {[n for n, _ in fresh]} vs "
+                  f"{[n for n, _ in committed]}")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
