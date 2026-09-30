@@ -184,7 +184,19 @@ DOC_PATTERNS = [
 # corralled stops being a finding, and one in a detail paragraph starts being
 # one.
 SHIPPING_FILES = ("system-changes.md", "CLAUDE.md", "README.md", "TODO.md",
-                  "AGENTS.md", "CONTRIBUTING.md", "history/BUILD-LOG.md")
+                  "AGENTS.md", "CONTRIBUTING.md")
+
+# What these scans USED to read and no longer do, each with the reason, so
+# the suite records the change rather than failing on it or hiding it
+# (github-offer 8.1). The design notes left this tree on 2026-09-28 and live
+# only in a private repository now; scanning for their leak into a public
+# tree they are no longer in guards nothing. `test_retired_corpora_stay_
+# retired` holds both scans to this list.
+RETIRED_CORPORA = {
+    "specs/": "the design specs live in the private notes repository only; "
+              "gitignored here",
+    "history/": "the build log and older records, the same; gitignored here",
+}
 
 # Two files have to contain these strings in order to do their job, and a
 # guard that fails on its own specification and its own proof is a guard
@@ -192,8 +204,6 @@ SHIPPING_FILES = ("system-changes.md", "CLAUDE.md", "README.md", "TODO.md",
 # by a pattern, so that a third exemption is a visible edit somebody has to
 # justify - which is the difference between an exemption and a hole.
 SHAPE_EXEMPT = {
-    "specs/defect-item-shape.md":
-        "the spec that defines the shapes; it quotes them to document them",
     "tests/portability.py":
         "this file - test_the_specific_shapes_match_what_they_must carries "
         "the must-match literals, and a shape proved against nothing is a "
@@ -274,10 +284,6 @@ def skip(name: str, why: str) -> None:
     print(f"[skip] {name}\n         {why}")
 
 
-DOCS_REPO = "paper-engine-documentation"
-DOCS_URL = "https://github.com/mercer-science/" + DOCS_REPO
-
-
 def docs_root():
     """Where the user-facing README lives: this repository.
 
@@ -288,12 +294,6 @@ def docs_root():
     reads, and that page is this repository's README again.
     """
     return ROOT if os.path.isfile(os.path.join(ROOT, "README.md")) else None
-
-
-NO_DOCS = (
-    "no " + DOCS_REPO + " clone, so the README these checks are about cannot "
-    "be read from here. Clone " + DOCS_URL + " beside this repository, or set "
-    "PAPER_ENGINE_DOCS to it. These checks did NOT run.")
 
 
 def section(title: str) -> None:
@@ -812,7 +812,9 @@ def test_readme_documents_both_routes() -> None:
     # plugin" and nothing in the toolkit noticed.
     docs = docs_root()
     if docs is None:
-        skip("README's install claims against the manifests", NO_DOCS)
+        skip("README's install claims against the manifests",
+             "no README.md at the root of this tree. These checks did NOT "
+             "run.")
         return
     readme = read(os.path.join(docs, "README.md"))
 
@@ -996,15 +998,10 @@ def test_documentation_names_nothing_real() -> None:
     # engine's own prompt tables reach an agent by the same route these files
     # do, and are scanned with the same patterns rather than a second copy of
     # them (see test_the_engines_own_prompt_text_is_documentation).
-    # `history/` is globbed beside `specs/` because a spec that becomes a
-    # record does not stop reaching GitHub - `build-order.md` and
-    # `build-order-2026-09-07.md` moved there on 2026-09-24 and took six
-    # checks of this suite with them until this line was widened. The same
-    # trap as the SKILL.md split: a suite pointed at the old path reports the
-    # same green over less text.
-    for path in SKILL_TEXTS + sorted(
-            glob.glob(os.path.join(ROOT, "specs", "*.md"))
-            + glob.glob(os.path.join(ROOT, "history", "*.md"))):
+    # `specs/` and `history/` were scanned here until 2026-09-30. They are
+    # RETIRED_CORPORA now, with the reason, and test_retired_corpora_stay_
+    # retired holds this loop to that list.
+    for path in _documentation_corpus():
         name = os.path.relpath(path, ROOT).replace(os.sep, "/")
         text = visiting("documentation", path)
         for pat, why in DOC_PATTERNS:
@@ -1034,17 +1031,32 @@ def _shape_contract(engine: str = "manuscript") -> dict:
     return ns
 
 
+def _documentation_corpus() -> list[str]:
+    return list(SKILL_TEXTS)
+
+
 def _shipping_corpus() -> list[str]:
     out = [os.path.join(ROOT, n) for n in SHIPPING_FILES
            if os.path.exists(os.path.join(ROOT, n))]
     out += sorted(glob.glob(os.path.join(ROOT, "tests", "*.py")))
     out += sorted(glob.glob(os.path.join(ROOT, "tools", "*.md")))
-    out += sorted(glob.glob(os.path.join(ROOT, "specs", "*.md")))
-    # See the note in test_documentation_quotes_nothing_real: a record in
-    # `history/` reaches GitHub exactly as a spec does.
-    out += sorted(glob.glob(os.path.join(ROOT, "history", "*.md")))
     out += SKILLS
     return out
+
+
+def test_retired_corpora_stay_retired() -> None:
+    section("What the scans stopped reading is named, not lost (8.1)")
+    for name, corpus in (("documentation", _documentation_corpus()),
+                         ("shipping", _shipping_corpus())):
+        rel = [os.path.relpath(p, ROOT).replace(os.sep, "/") for p in corpus]
+        for gone, why in sorted(RETIRED_CORPORA.items()):
+            check(f"the {name} scan reads nothing under {gone} ({why})",
+                  [r for r in rel if r.startswith(gone)], [])
+    # And each retired path is one the repository keeps out, which is the
+    # reason retiring it is safe.
+    for gone in RETIRED_CORPORA:
+        check(f"{gone} is one of the private paths", gone in PRIVATE_PATHS,
+              True)
 
 
 def test_shipping_corpus_carries_no_project_specifics() -> None:
@@ -2096,6 +2108,61 @@ def test_both_plugins_carry_date_versions() -> None:
         note(f"version bump is due: {res['why']} - run {res['remedy']}")
 
 
+# github-offer 1 and 5: the engine offers GitHub and hands over to
+# github-ai-project-manager. It never does any of it itself.
+OFFER_SKILLS = ("setup-project-directory", "reorganize-directory")
+OFFER_HEAD = "<!-- github-offer:"
+OFFER_TAIL = "<!-- /github-offer -->"
+GIT_WRITES = ("git init", "gh repo create", "git push", '"SessionEnd"')
+GITHUB_PHRASES = ("put this on GitHub", "sync this between my computers",
+                  "stop syncing", "put this file on GitHub")
+
+
+def test_github_is_offered_not_done() -> None:
+    section("GitHub is offered and handed over, never done (github-offer 5)")
+
+    blocks = {}
+    for name in OFFER_SKILLS:
+        text = read(os.path.join(SKILLS_DIR, name, "SKILL.md"))
+        i, j = text.find(OFFER_HEAD), text.find(OFFER_TAIL)
+        check(f"{name} carries the GitHub offer block", i >= 0 and j > i,
+              True)
+        blocks[name] = text[i:j + len(OFFER_TAIL)] if i >= 0 and j > i else ""
+    first = blocks[OFFER_SKILLS[0]]
+    check("the offer block is byte-identical in both skills",
+          all(b == first for b in blocks.values()) and bool(first), True,
+          "one wording, held equal here: change both or neither")
+    check("...and asks the question in the spec's words",
+          "Would you like this project on GitHub?" in first, True)
+
+    # Every file under tools/, not only the engines: a template or a README
+    # that tells an agent to run one of these is the same leak.
+    corpus = [os.path.join(SKILLS_DIR, n, "SKILL.md") for n in OFFER_SKILLS]
+    for dirpath, _dirs, files in os.walk(TOOLS):
+        if "__pycache__" in dirpath:
+            continue
+        corpus += [os.path.join(dirpath, f) for f in files]
+    for path in sorted(corpus):
+        try:
+            text = read(path)
+        except (UnicodeDecodeError, ValueError):
+            continue                      # a binary template file
+        name = os.path.relpath(path, ROOT).replace(os.sep, "/")
+        hits = [w for w in GIT_WRITES if w in text]
+        if hits:
+            check(f"{name} runs no git write and writes no hook", hits, [],
+                  "the manager does these; the engine only offers")
+    check("the git-write scan read the tools tree", len(corpus) > 20, True)
+
+    agents = read(os.path.join(ROOT, "AGENTS.md"))
+    rows = [ln for ln in agents.splitlines() if ln.startswith("|")]
+    for phrase in GITHUB_PHRASES:
+        row = [r for r in rows if phrase in r]
+        check(f"AGENTS.md routes {phrase!r} to the manager",
+              bool(row) and all("github-ai-project-manager" in r.split("|")[2]
+                                for r in row), True, str(row))
+
+
 # The repository is public. What must never be committed to it is named here
 # and checked against what git actually tracks, not against what is on disk:
 # the files may well be on the maintainer's machine, where they belong.
@@ -2161,6 +2228,8 @@ def main() -> int:
     test_offline_staleness_check()
     test_nothing_offers_to_send_anything_upstream()
     test_private_notes_are_never_tracked()
+    test_retired_corpora_stay_retired()
+    test_github_is_offered_not_done()
     test_version_check_uses_G_not_S()
     test_version_check_sees_every_pack_file()
     test_version_bump_check()

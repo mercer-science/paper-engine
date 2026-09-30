@@ -17,7 +17,7 @@ Usage:
   python scaffold.py scaffold "path/to/My Project" --dry-run
   python scaffold.py check "path/to/My Project"
   python scaffold.py tree "path/to/My Project"
-  python scaffold.py github "path/to/My Project" [--owner ORG] [--url URL]
+  python scaffold.py github-offer "path/to/My Project" [--decline]
 
   python scaffold.py mock-floats "path/to/My Project" --bundle mock.json
 
@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import argparse
 import datetime
+import glob
 import hashlib
 import importlib.util
 import json
@@ -76,7 +77,6 @@ FILES: list[tuple[str, str | None]] = [
     ("project.yml", "project.yml"),
     (".gitignore", "dotfiles/gitignore"),
     (".claude/settings.local.json", "dotfiles/settings.local.json"),
-    (".claude/hooks/sync.sh", "dotfiles/sync.sh"),         # GitHub sync, run by the hooks
     (".vscode/settings.json", "dotfiles/vscode_settings.json"),
     (".vscode/extensions.json", "dotfiles/vscode_extensions.json"),
 
@@ -2822,6 +2822,7 @@ PROJECT_KEY_COMMENTS = {
     "paper_kind": "# research | review. Absent reads as research",
     "expects_data": "# measurements | images | none",
     "field": "# chemistry | biochemistry | other",
+    "github": "# declined: GitHub is not offered again",
 }
 
 
@@ -4808,235 +4809,164 @@ def _record_stated(root: str, stated: dict, dry_run: bool = False) -> list:
 
 
 # ---------------------------------------------------------------------------
-# GitHub: one private repository per project, kept in step by two hooks
+# GitHub: offered here, done by github-ai-project-manager
 # ---------------------------------------------------------------------------
-# The hooks and the script they run ship in the template, so a project
-# scaffolded today already carries them; `github` is what turns them on - it
-# makes the folder a repository, gives it a private GitHub home, and runs the
-# first sync. It is also how a project scaffolded before the hooks existed
-# gets them: the sync script is engine machinery and is brought up to date,
-# the settings file is the user's and only gains the hooks it is missing.
+# The engine used to make each project a repository and ship a sync in the
+# template. It no longer does either (specs/github-offer-2026-09-30.md): a
+# member can use the engine without GitHub, and the manager without the
+# engine, so the sync lives in the manager only. What stays here is the part
+# with a right answer - should the skill offer at all, is the manager
+# installed, and what does the hand-over run - so both skills that set up a
+# project read one result instead of each deciding for itself.
+#
+# Nothing on this path reaches a network, and nothing here makes a folder a
+# repository, creates one on GitHub, pushes or writes a hook. The one git
+# command it runs is a read: which `origin` the folder already has.
 
-SYNC_SCRIPT = ".claude/hooks/sync.sh"
-SYNC_SETTINGS = ".claude/settings.local.json"
-RAW_DATA_MARKER = "*.eer"
+MANAGER = "github-ai-project-manager"
+MANAGER_URL = "https://github.com/mercer-science/github-ai-project-manager"
+GITHUB_DECLINED = "declined"
 
+# A project scaffolded before 2026-09-30 carries the engine's old sync, and it
+# keeps working: the engine never deletes or rewrites it. The manager finds it
+# by these same strings (its bin/gpm and tests/test_gpm.py pin them), so they
+# are copied here verbatim and must not be reworded.
+LEGACY_SYNC_SCRIPT = ".claude/hooks/sync.sh"
+LEGACY_SYNC_MARK = "KEPT_NOTE=.git/paper-engine-kept-off"
 
-def _git(root: str, *args: str) -> "subprocess.CompletedProcess[str]":
-    return subprocess.run(["git", "-C", root, *args], capture_output=True,
-                          text=True, encoding="utf-8", errors="replace")
+# The one fact the manager cannot say for itself, because it knows nothing
+# about papers. Passed to `gpm connect --context`; the manager hands it to the
+# user and does not let it change its recommendation.
+DATA_CONTEXT = ("data/ also holds methods_facts.yml, data_contract.md and the "
+                "analysis scripts and outputs. If all of data/ stays on the "
+                "lab computer, a laptop clone cannot run the analysis or "
+                "check the methods.")
 
+GITHUB_REDIRECT = (
+    "scaffold.py github is gone: the paper engine no longer puts projects on "
+    "GitHub itself. " + MANAGER + " does, with or without the engine ("
+    + MANAGER_URL + "). Run `scaffold.py github-offer <path>` to see whether "
+    "it is installed and the command that hands over to it.")
 
-def _repo_slug(name: str) -> str:
-    slug = re.sub(r"[^A-Za-z0-9._-]+", "-", name).strip("-.").lower()
-    return slug or "paper-project"
-
-
-def _find_bash() -> str:
-    found = shutil.which("bash")
-    if found:
-        return found
-    for cand in (r"C:\Program Files\Git\bin\bash.exe",
-                 r"C:\Program Files (x86)\Git\bin\bash.exe"):
-        if os.path.exists(cand):
-            return cand
-    return ""
-
-
-def _install_sync(root: str, steps: list[str]) -> list[str]:
-    """Put the sync script, its hooks and its ignore lines in place.
-    Returns the problems that stopped a piece; empty when all three are in."""
-    problems: list[str] = []
-
-    with open(os.path.join(TEMPLATE_DIR, "dotfiles", "sync.sh"),
-              encoding="utf-8") as fh:
-        script = fh.read()
-    target = os.path.join(root, *SYNC_SCRIPT.split("/"))
-    current = _read_utf8(target) if os.path.exists(target) else None
-    if current != script:
-        os.makedirs(os.path.dirname(target), exist_ok=True)
-        with open(target, "w", encoding="utf-8", newline="\n") as fh:
-            fh.write(script)
-        steps.append(("updated " if current is not None else "wrote ")
-                     + SYNC_SCRIPT)
-
-    with open(os.path.join(TEMPLATE_DIR, "dotfiles", "settings.local.json"),
-              encoding="utf-8") as fh:
-        template_hooks = json.load(fh)["hooks"]
-    spath = os.path.join(root, *SYNC_SETTINGS.split("/"))
-    settings: dict = {}
-    if os.path.exists(spath):
-        try:
-            with open(spath, encoding="utf-8") as fh:
-                settings = json.load(fh)
-        except ValueError as e:
-            problems.append(f"{SYNC_SETTINGS} is not valid JSON ({e}); the "
-                            "hooks were not added. Fix the file and re-run.")
-            settings = {}
-            spath = ""
-    if spath:
-        hooks = settings.setdefault("hooks", {})
-        added = []
-        for event, entries in template_hooks.items():
-            have = hooks.setdefault(event, [])
-            for entry in entries:
-                cmd = entry["hooks"][0]["command"]
-                if not any(h.get("command") == cmd
-                           for e in have for h in e.get("hooks", [])):
-                    have.append(entry)
-                    added.append(f"{event}({entry.get('matcher', 'any')})")
-        if added:
-            os.makedirs(os.path.dirname(spath), exist_ok=True)
-            with open(spath, "w", encoding="utf-8", newline="\n") as fh:
-                fh.write(json.dumps(settings, indent=2) + "\n")
-            steps.append(f"added hooks to {SYNC_SETTINGS}: " + ", ".join(added))
-
-    gpath = os.path.join(root, ".gitignore")
-    if not os.path.exists(gpath):
-        shutil.copyfile(os.path.join(TEMPLATE_DIR, "dotfiles", "gitignore"),
-                        gpath)
-        steps.append("wrote .gitignore")
-    else:
-        lines = _read_utf8(gpath).splitlines()
-        extra: list[str] = []
-        if ".claude/*" in lines and "!.claude/hooks/" not in lines:
-            extra += ["", "# The project sync's script, run by the hooks in "
-                      "settings.local.json", "!.claude/hooks/"]
-        if RAW_DATA_MARKER not in lines:
-            tmpl = _read_utf8(os.path.join(TEMPLATE_DIR, "dotfiles",
-                                           "gitignore")).splitlines()
-            i = tmpl.index(RAW_DATA_MARKER)
-            start = i
-            while start > 0 and tmpl[start - 1].startswith("#"):
-                start -= 1
-            end = i
-            while end + 1 < len(tmpl) and tmpl[end + 1].startswith("*."):
-                end += 1
-            extra += [""] + tmpl[start:end + 1]
-        if extra:
-            with open(gpath, "a", encoding="utf-8", newline="\n") as fh:
-                fh.write(("\n" if lines and lines[-1] != "" else "")
-                         + "\n".join(extra).lstrip("\n") + "\n")
-            steps.append("added the sync and raw-data lines to .gitignore")
-    return problems
+# Folders a sync client rewrites. A git repository inside one corrupts .git,
+# so the skill says so before the offer (github-offer 1.5).
+SYNCED_FOLDER_RE = re.compile(
+    r"(OneDrive|Dropbox|Google Drive|GoogleDrive|iCloud|Mobile Documents|"
+    r"Box Sync)", re.I)
 
 
-def connect_github(root: str, repo: str = "", owner: str = "",
-                   url: str = "", public: bool = False) -> dict:
-    """Make `root` a repository with a private GitHub home, and sync it once.
+def _plugin_roots() -> list[str]:
+    """Where Claude Code and Codex keep plugin installs. `$PAPER_ENGINE_
+    PLUGINS_DIR` moves the first, as it does in labpack.py, and
+    `$PAPER_ENGINE_CODEX_PLUGINS_DIR` the second, so a test never reads the
+    member's own."""
+    home = os.path.expanduser("~")
+    claude = os.environ.get("PAPER_ENGINE_PLUGINS_DIR") or os.path.join(
+        home, ".claude", "plugins")
+    codex = os.environ.get("PAPER_ENGINE_CODEX_PLUGINS_DIR") or os.path.join(
+        home, ".codex", "plugins")
+    return [os.path.abspath(os.path.expanduser(claude)),
+            os.path.abspath(os.path.expanduser(codex))]
 
-    Order matters: the sync pieces go in before the first commit, so the
-    first commit already obeys the large-data rule, and the repository is
-    created before the push so a missing `gh` stops at a clear instruction
-    rather than a half-connected folder.
-    """
-    root = os.path.abspath(root)
-    res: dict = {"path": root, "steps": [], "problems": [], "remote": "",
-                 "created_repository": False, "proposed_repo": "",
-                 "needs_confirmation": False, "sync_output": [], "ok": False}
-    steps, problems = res["steps"], res["problems"]
-    if not os.path.isdir(root):
-        problems.append(f"no such directory: {root}")
-        return res
-    if shutil.which("git") is None:
-        problems.append("git is not installed on this computer. Install it "
-                        "(https://git-scm.com), then re-run.")
-        return res
 
-    problems += _install_sync(root, steps)
+def find_manager() -> dict:
+    """Is github-ai-project-manager installed? Offline: `gpm` on PATH, or a
+    plugin install under either CLI's plugin cache (github-offer 1.4, 7)."""
+    on_path = shutil.which("gpm")
+    if on_path:
+        return {"installed": True, "via": "PATH", "gpm": "gpm"}
+    for root in _plugin_roots():
+        hits = sorted(glob.glob(os.path.join(root, "cache", "*", MANAGER,
+                                             "*", "bin", "gpm")))
+        if hits:
+            # The newest version directory sorts last; any of them runs.
+            return {"installed": True, "via": os.path.dirname(
+                os.path.dirname(hits[-1])), "gpm": hits[-1]}
+    return {"installed": False, "via": "", "gpm": ""}
 
+
+def _origin(root: str) -> str:
+    """The folder's own `origin`, or "". Its OWN: a project inside some other
+    repository is not on GitHub by being there."""
     if not os.path.exists(os.path.join(root, ".git")):
-        r = _git(root, "init", "-q", "-b", "main")
-        if r.returncode != 0:          # git older than 2.28 has no -b
-            _git(root, "init", "-q")
-            _git(root, "symbolic-ref", "HEAD", "refs/heads/main")
-        steps.append("made the folder a git repository (branch main)")
+        return ""
+    if shutil.which("git") is None:
+        return ""
+    r = subprocess.run(["git", "-C", root, "remote", "get-url", "origin"],
+                       capture_output=True, text=True, encoding="utf-8",
+                       errors="replace")
+    return r.stdout.strip() if r.returncode == 0 else ""
 
-    if not _git(root, "config", "user.email").stdout.strip():
-        problems.append(
-            "git does not know your name and email on this computer. Run:\n"
-            '  git config --global user.name "Your Name"\n'
-            '  git config --global user.email "you@example.edu"\n'
-            "then re-run this command.")
-        return res
 
-    remote = _git(root, "remote", "get-url", "origin").stdout.strip()
-    if not remote and url:
-        _git(root, "remote", "add", "origin", url)
-        remote = url
-        steps.append(f"connected to {url}")
-    if not remote and not repo:
-        # A repository is public in name even when private in content, and
-        # renaming one later breaks every clone of it. So the name is the
-        # user's to confirm: propose one and stop, and create nothing until a
-        # re-run passes it back with --repo.
-        res["proposed_repo"] = _repo_slug(os.path.basename(root))
-        res["needs_confirmation"] = True
-        problems.append(
-            "Confirm the repository name before it is created. Proposed: "
-            f"{(owner + '/') if owner else ''}{res['proposed_repo']} "
-            "(private). Re-run with --repo <name> once the user agrees.")
-        return res
-    if not remote:
-        name = repo
-        full = f"{owner}/{name}" if owner else name
-        gh = shutil.which("gh")
-        authed = gh is not None and subprocess.run(
-            [gh, "auth", "status"], capture_output=True).returncode == 0
-        if not authed:
-            why = ("the GitHub command-line tool (gh) is not installed"
-                   if gh is None else "gh is not logged in (run: gh auth login)")
-            problems.append(
-                f"Could not create the repository: {why}. Either fix that and "
-                "re-run, or create an EMPTY private repository at "
-                "https://github.com/new (no README, no .gitignore, no licence) "
-                "and re-run with --url <its https address>.")
-            return res
-        r = subprocess.run(
-            [gh, "repo", "create", full,
-             "--public" if public else "--private",
-             "--source", root, "--remote", "origin"],
-            capture_output=True, text=True, encoding="utf-8", errors="replace")
-        if r.returncode != 0:
-            problems.append("gh could not create the repository: "
-                            + (r.stderr or r.stdout).strip())
-            return res
-        remote = _git(root, "remote", "get-url", "origin").stdout.strip()
-        res["created_repository"] = True
-        steps.append(f"created the {'public' if public else 'private'} "
-                     f"repository {remote}")
-    res["remote"] = remote
+def has_legacy_sync(root: str) -> bool:
+    path = os.path.join(root, *LEGACY_SYNC_SCRIPT.split("/"))
+    return os.path.isfile(path) and LEGACY_SYNC_MARK in _read_utf8(path)
 
-    bash = _find_bash()
-    if not bash:
-        steps.append("bash was not found, so the first sync will run the next "
-                     "time Claude Code opens in this folder")
-        res["ok"] = not problems
+
+def github_offer(root: str) -> dict:
+    """Whether to offer GitHub at the end of setup or a reorganisation, and
+    what the hand-over runs. Reads; writes nothing."""
+    root = os.path.abspath(root)
+    res: dict = {"path": root, "offer": False, "skip_reason": "",
+                 "origin": "", "declined": False, "synced_folder": "",
+                 "manager": find_manager(), "legacy_sync": False,
+                 "legacy_takeover": False, "connect": [], "error": ""}
+    if not os.path.isdir(root):
+        res["error"] = f"no such directory: {root}"
         return res
-    env = dict(os.environ, CLAUDE_PROJECT_DIR=root)
-    r = subprocess.run([bash, os.path.join(root, *SYNC_SCRIPT.split("/")),
-                        "start"], capture_output=True, text=True,
-                       encoding="utf-8", errors="replace", env=env, cwd=root)
-    res["sync_output"] = [ln for ln in r.stdout.splitlines() if ln.strip()]
-    head = _git(root, "rev-parse", "-q", "--verify", "HEAD").returncode == 0
-    upstream = _git(root, "rev-parse", "-q", "--verify", "@{u}").returncode == 0
-    if head and upstream:
-        steps.append("the project is committed and on GitHub")
-    res["ok"] = not problems and head and upstream
+    m = SYNCED_FOLDER_RE.search(root)
+    res["synced_folder"] = m.group(1) if m else ""
+    res["origin"] = _origin(root)
+    res["declined"] = (read_project_yml(root).get("github", "").strip().lower()
+                       == GITHUB_DECLINED)
+    res["legacy_sync"] = has_legacy_sync(root)
+    # The takeover is said once whenever the manager could do it, whether or
+    # not the offer itself is skipped: a legacy project usually HAS an origin.
+    res["legacy_takeover"] = res["legacy_sync"] and res["manager"]["installed"]
+    if res["origin"]:
+        res["skip_reason"] = f"already its own repository, with origin {res['origin']}"
+    elif res["declined"]:
+        res["skip_reason"] = "project.yml records github: declined"
+    else:
+        res["offer"] = True
+
+    gpm = res["manager"]["gpm"] or "gpm"
+    cmd = [gpm, "connect", root]
+    if os.path.isdir(os.path.join(root, "data")):
+        cmd += ["--suggest-data", "data", "--context", DATA_CONTEXT]
+    # A path to the script, from a plugin cache, is run through bash - which
+    # is what works on Windows too. `gpm` on PATH runs as itself.
+    res["connect"] = (["bash"] + cmd) if gpm != "gpm" else cmd
     return res
 
 
-def print_github(res: dict) -> None:
-    for s in res["steps"]:
-        print(f"  {s}")
-    for ln in res["sync_output"]:
-        print(f"  {ln}")
-    for p in res["problems"]:
-        print(f"PROBLEM: {p}")
-    if res["ok"]:
-        print(f"Connected: {res['remote']}")
-        print("From now on it syncs itself: on opening Claude Code here, and "
-              "on /exit or /clear.")
+def decline_github(root: str) -> dict:
+    """Record `github: declined`, so neither skill offers again. A later
+    "put this on GitHub" still goes to the manager: a decline is about being
+    asked, not a lock."""
+    return record_project_key(root, "github", GITHUB_DECLINED)
+
+
+def print_github_offer(res: dict) -> None:
+    if res["error"]:
+        print(f"PROBLEM: {res['error']}")
+        return
+    if res["synced_folder"]:
+        print(f"WARNING: this folder is inside {res['synced_folder']}. A git "
+              "repository inside a synced folder corrupts .git; move the "
+              "project to an ordinary folder before putting it on GitHub.")
+    if res["legacy_takeover"]:
+        print("This project uses the paper engine's old GitHub sync. The "
+              "manager can take it over and will ask about data first.")
+    mgr = res["manager"]
+    print(f"{MANAGER}: " + (f"installed ({mgr['via']})" if mgr["installed"]
+                            else f"not installed - {MANAGER_URL}"))
+    if res["offer"]:
+        print("Offer GitHub. Hand-over command:")
+        print("  " + " ".join(f'"{a}"' if " " in a else a
+                              for a in res["connect"]))
+    else:
+        print(f"Do not offer: {res['skip_reason']}.")
 
 
 def main() -> int:
@@ -5232,21 +5162,21 @@ def main() -> int:
     hv.add_argument("--dry-run", action="store_true",
                     help="report what is on the files and write nothing")
 
+    # `github` moved to github-ai-project-manager. The name stays in the
+    # parser so that asking for it prints where it went, not a usage error.
     gh = sub.add_parser("github", parents=[common],
-                        help="make the project a git repository with a private "
-                             "GitHub home, and turn on its automatic sync")
-    gh.add_argument("path")
-    gh.add_argument("--repo", default="",
-                    help="repository name, as the user confirmed it. Without "
-                         "it, a repository that would be created is only "
-                         "proposed")
-    gh.add_argument("--owner", default="",
-                    help="account or organisation (default: your own)")
-    gh.add_argument("--url", default="",
-                    help="an existing EMPTY repository to connect instead of "
-                         "creating one")
-    gh.add_argument("--public", action="store_true",
-                    help="create it public (default private)")
+                        help="moved to github-ai-project-manager; prints how "
+                             "to reach it")
+    gh.add_argument("rest", nargs=argparse.REMAINDER)
+
+    go = sub.add_parser("github-offer", parents=[common],
+                        help="whether to offer GitHub for this project, "
+                             "whether github-ai-project-manager is installed, "
+                             "and the command that hands over to it")
+    go.add_argument("path")
+    go.add_argument("--decline", action="store_true",
+                    help="record github: declined in project.yml, so neither "
+                         "skill offers again")
 
     t = sub.add_parser("tree", help="print the project tree", parents=[common])
     t.add_argument("path")
@@ -5593,13 +5523,28 @@ def main() -> int:
         return 1 if res.get("error") else 0
 
     if args.cmd == "github":
-        res = connect_github(args.path, repo=args.repo, owner=args.owner,
-                             url=args.url, public=args.public)
+        if getattr(args, "json", False):
+            print(json.dumps({"error": GITHUB_REDIRECT}, indent=2))
+        else:
+            print(GITHUB_REDIRECT, file=sys.stderr)
+        return 2
+
+    if args.cmd == "github-offer":
+        if args.decline:
+            res = decline_github(args.path)
+            if args.json:
+                print(json.dumps(res, indent=2, ensure_ascii=False))
+            elif res["errors"]:
+                print("PROBLEM: " + "; ".join(res["errors"]))
+            else:
+                print(f"github: declined - {res['action']}")
+            return 1 if res["errors"] else 0
+        res = github_offer(args.path)
         if args.json:
             print(json.dumps(res, indent=2, ensure_ascii=False))
         else:
-            print_github(res)
-        return 0 if res["ok"] else 1
+            print_github_offer(res)
+        return 1 if res["error"] else 0
 
     if args.cmd == "tree":
         if not os.path.isdir(args.path):

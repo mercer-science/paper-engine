@@ -18203,9 +18203,32 @@ ENGINE_ISSUES: dict[str, dict[str, str]] = {
 }
 
 
+def durable_system_changes() -> str:
+    """`~/.paper-engine/system-changes.md`: where a plugin install keeps it.
+
+    A plugin update installs a new version directory, so a list written
+    beside the engine inside the plugin cache is left behind in the old one,
+    or deleted with it, and the next `log-issue` starts a fresh list
+    (github-offer 8.2). `~/.paper-engine/` is the directory no plugin
+    lifecycle touches - the one the lab-pack drop-zone already uses.
+    """
+    lp = _sibling("labpack")
+    home = (lp.home_dir() if lp is not None else
+            os.path.join(os.path.expanduser("~"), ".paper-engine"))
+    return os.path.join(home, "system-changes.md")
+
+
 def system_changes_path() -> str:
-    """The file, overridable so a test never writes to the real one."""
-    return os.environ.get("SYSTEM_CHANGES_MD") or SYSTEM_CHANGES
+    """The file, in this order: `$SYSTEM_CHANGES_MD` (so a test never writes
+    to the real one); inside a plugin install, `durable_system_changes()`;
+    in a source clone, beside the toolkit, where it always was."""
+    env = os.environ.get("SYSTEM_CHANGES_MD")
+    if env:
+        return env
+    lp = _sibling("labpack")
+    if lp is not None and lp.inside_plugin_install(HERE):
+        return durable_system_changes()
+    return SYSTEM_CHANGES
 
 
 def _sc_closed_at(text: str) -> int:
@@ -18222,19 +18245,22 @@ def _sc_load(path: str) -> tuple[str, str]:
 
     The file is local to each machine - it is gitignored, because its items
     are written from real, often unpublished projects and the repository is
-    public - so a fresh clone has none. The one beside the toolkit is created
-    from the template on first use. Any other path is created by nobody: an
-    empty defect list appearing next to a project is not something anybody
-    asked for.
+    public - so a fresh clone has none. The one beside the toolkit, and the
+    durable one a plugin install uses, are created from the template on
+    first use. Any other path is created by nobody: an empty defect list
+    appearing next to a project is not something anybody asked for.
     """
     if not os.path.isfile(path):
-        if os.path.abspath(path) != os.path.abspath(SYSTEM_CHANGES) \
+        seedable = {os.path.abspath(SYSTEM_CHANGES),
+                    os.path.abspath(durable_system_changes())}
+        if os.path.abspath(path) not in seedable \
                 or not os.path.isfile(SYSTEM_CHANGES_TEMPLATE):
             return "", (f"no system-changes.md at {path}, so nothing was "
                         f"logged. The engine never creates it anywhere but "
-                        f"beside the toolkit - an empty defect list appearing "
-                        f"next to a project is not something anybody asked "
-                        f"for.")
+                        f"beside the toolkit or in ~/.paper-engine/ - an "
+                        f"empty defect list appearing next to a project is "
+                        f"not something anybody asked for.")
+        os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
         shutil.copyfile(SYSTEM_CHANGES_TEMPLATE, path)
     text = _read(path)
     if not CLOSED_ITEMS_RE.search(text) or RUN_HISTORY_HEAD not in text:
@@ -25769,6 +25795,8 @@ def main() -> int:
                           f"until a run fails to reproduce it.")
                 if mark["note"]:
                     print(f"  NOT marked: {mark['note']}")
+            # Last, so "send me your defect list" has a file to point at.
+            print(f"  defect list: {res['path']}")
         return 2 if (res["refused"] or (mark and mark["refused"])) else 0
 
     if args.cmd == "reference-doc":

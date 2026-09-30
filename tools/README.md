@@ -368,7 +368,7 @@ Spec: `specs/setup-project-directory.md`. Caller: `skills/setup-project-director
 | `report <path>` | What this folder can and cannot now do: structure, sorted, float order, AI disclosure, cover letter, citations. **Every row says what it did or why it could not, and never nothing** |
 | `survey <path>` | Every top-level entry the tree does not explain, and what it could feed — `drafting`, `citations`, `data`, `floats`, `analysis`. `--use X --as ROLE` / `--ignore X` records the answer in `project.yml:extra_sources` so it is asked once. `--all`, `--note`, `--dry-run` |
 | `tree <path>` | The annotated project tree |
-| `github <path> [--owner ORG] [--repo NAME] [--url URL]` | Make the project a git repository with a private GitHub home and turn on its sync (`.claude/hooks/sync.sh`, run by the session hooks). Without `--repo` a repository that would be created is only **proposed**, so the user confirms its name first. Safe to re-run; also how a project scaffolded before the sync gets it |
+| `github-offer <path> [--decline]` | Whether the skills should offer GitHub for this project (not when it already has its own `origin`, not when `project.yml` says `github: declined`), whether [github-ai-project-manager](https://github.com/mercer-science/github-ai-project-manager) is installed (`gpm` on `PATH`, or a plugin install under `~/.claude/plugins` or `~/.codex/plugins`), whether the project carries the engine's old sync, and the `gpm connect` command that hands over. Offline, and writes nothing except `--decline`. The engine no longer runs `git` itself: `github` now only prints where it went |
 | `float list <path>` | Every float folder, in manuscript order, with the scripts in it |
 | `float new <path>` | Add the next float folder. `--figure` / `--table`, `--slug`, `--supplementary`, `--art plotted\|drawn\|mixed` |
 | `float renumber <path>` | Move a float. `--from N --to M`, `--figure` / `--table`, `--dry-run` |
@@ -2262,7 +2262,7 @@ The toolkit lives in a shared folder, so two people can learn into one file:
 `merge` is a union by id — same id and same evidence is a no-op, same id and
 different evidence merges the evidence and re-evaluates the threshold, and the
 same id holding a different rule is renumbered with a note saying why. Do not
-`git init` inside the shared folder to solve this.
+make the shared folder a git repository to solve this.
 
 ## Examples
 

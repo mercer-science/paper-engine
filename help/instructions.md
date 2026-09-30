@@ -270,6 +270,7 @@ This section is why the rest of the page is optional reading. Say something like
 | what is still blocking this · answer the questions it raised · what are all these flags | [`flag-resolver`](../skills/flag-resolver/SKILL.md) |
 | my folder is a mess · files everywhere · I don't know where anything is · sort out / clean up / tidy this folder · sort my figures out | [`reorganize-directory`](../skills/reorganize-directory/SKILL.md) |
 | the engine did something wrong · it keeps doing X | `manuscript.py log-issue` |
+| put this on GitHub · sync this between my computers · stop syncing · put this file on GitHub | [github-ai-project-manager](https://github.com/mercer-science/github-ai-project-manager), a separate tool. The engine only offers it and hands over; if it is not installed, you are offered the install |
 
 > [!NOTE]
 > **"Figure" means four different things**, and guessing wrong costs a week. A plotted float (`figure.R`), drawn art (`create-graphic-figure`), an existing float that needs changing (`refine-figure`), or the graphical abstract (`toc-graphic`). If it is not obvious you will be asked which, in those words.
@@ -340,6 +341,8 @@ What you get, and what each part is for:
 | `drafts/` | the writing, one folder per journal, plus `log.md` |
 | `obsolete/` | what previous rounds replaced, and journals you are no longer sending to. Nothing is deleted, and nothing is drafted from here |
 | `project.yml` | the answers above, plus the title and PI |
+
+**At the end it offers GitHub, and does not do it.** *"Would you like this project on GitHub?"* — a backup, and the same project on the lab computer and your laptop. Yes hands over to [github-ai-project-manager](https://github.com/mercer-science/github-ai-project-manager), which asks you what to keep off GitHub (all data is your decision) and keeps the project in step from then on. No is recorded in `project.yml` as `github: declined` and you are not asked again; you can still ask for it any time. `reorganize-directory` ends with the same offer. A project set up before 2026-09-30 keeps the engine's old sync, and it keeps working; the manager can take it over.
 
 It **never overwrites**, which is what makes it safe to run against a folder you are not sure about — and what makes `scaffold.py check` usable as a repair tool. Point it at a folder that is missing half the tree and it reports what is absent, which floats have no script, and which scripts are sitting somewhere nothing will render them.
 
@@ -691,6 +694,7 @@ No skill and no agent is required for any of these. Every one takes `--json`, on
 | Adopt a folder that already has work in it | `python tools/scaffold.py adopt "<path>"` |
 | See what the structure does not explain | `python tools/scaffold.py survey "<path>"` |
 | See the tree | `python tools/scaffold.py tree "<path>"` |
+| Should GitHub be offered, and is the manager installed | `python tools/scaffold.py github-offer "<path>"` |
 | Add / renumber / migrate a float folder | `python tools/scaffold.py float new\|renumber\|migrate "<path>"` |
 | Lint the float scripts | `python tools/scaffold.py float lint "<path>"` |
 | Prefill instrument settings from the facility record | `python tools/scaffold.py prefill "<path>" --instrument "…"` |

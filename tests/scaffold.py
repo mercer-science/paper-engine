@@ -3313,98 +3313,252 @@ def test_reorganize_report():
 
 
 # ---------------------------------------------------------------------------
-# The GitHub sync: `github` connects a project, the hooks keep it in step,
-# and large data never reaches the repository
+# GitHub is offered, not done (specs/github-offer-2026-09-30.md 5). The sync
+# moved to github-ai-project-manager; what stays is the offer's right answer.
 # ---------------------------------------------------------------------------
 
-def test_github_sync():
-    section("GitHub sync")
-    if shutil.which("git") is None or not sc._find_bash():
-        skip("GitHub sync", "git or bash not found")
-        return
-    root, proj, _ = new_project(title="Sync", field="biochemistry")
-    env_keep = {k: os.environ.get(k) for k in ("GIT_CONFIG_GLOBAL",
-                                              "GIT_CONFIG_NOSYSTEM")}
+def eq(label, got, want, detail: object = ""):
+    """`check` for a value: the label passes when got == want, and a failure
+    prints both."""
+    ok = got == want
+    return check(label, ok, "" if ok else f"got  {got!r}\nwant {want!r}"
+                 + (f"\n{detail}" if detail else ""))
+
+
+def test_github_is_not_scaffolded():
+    section("GitHub: the template carries no sync")
+    root, proj, _ = new_project(title="No Sync")
     try:
-        os.environ["GIT_CONFIG_GLOBAL"] = os.path.join(root, "gitconfig")
-        os.environ["GIT_CONFIG_NOSYSTEM"] = "1"
-        with open(os.environ["GIT_CONFIG_GLOBAL"], "w") as fh:
-            fh.write("[user]\n\tname = T\n\temail = t@example.org\n")
-        bare = os.path.join(root, "remote.git")
-        subprocess.run(["git", "init", "-q", "--bare", bare], check=True)
+        eq("the manifest names no .claude/hooks/ file",
+              [d for d, _t in sc.FILES if d.startswith(".claude/hooks/")], [])
+        eq("no .claude/hooks/ directory is written",
+              os.path.exists(os.path.join(proj, ".claude", "hooks")), False)
+        settings = json.loads(read(proj, ".claude/settings.local.json"))
+        eq("settings.local.json has no hooks key", "hooks" in settings,
+              False, sorted(settings))
+        eq("...and keeps its permissions block",
+              bool(settings.get("permissions", {}).get("allow")), True)
+        lines = read(proj, ".gitignore").splitlines()
+        eq("the .gitignore ignores no data format",
+              [ln for ln in lines if ln.startswith("*.")
+               and ln not in ("*.Rproj",)], [], lines)
+        eq("...and has no !.claude/hooks/", "!.claude/hooks/" in lines,
+              False)
+        eq("...but keeps the R, OS and OneDrive-conflict lines",
+              all(x in lines for x in (".Rhistory", ".DS_Store",
+                                       "*-DESKTOP-*")), True)
 
-        script = read(proj, sc.SYNC_SCRIPT)
-        check("the scaffold writes the sync script with LF endings",
-              b"\r" not in read_bytes(proj, sc.SYNC_SCRIPT))
-        hooks = json.loads(read(proj, sc.SYNC_SETTINGS))["hooks"]
-        check("the template carries the start, /clear and end hooks",
-              [e.get("matcher") for e in hooks["SessionStart"]]
-              == ["startup|resume", "clear"] and len(hooks["SessionEnd"]) == 1,
-              hooks)
-
-        movies = os.path.join(proj, "data", "raw", "movies")
-        os.makedirs(movies)
-        for i in range(5):
-            with open(os.path.join(movies, f"m{i}.tif"), "wb") as fh:
-                fh.truncate(60 * 1048576)
-        with open(os.path.join(proj, "data", "big map.mrc"), "wb") as fh:
-            fh.truncate(55 * 1048576)
-        with open(os.path.join(proj, "data", "small.mrc"), "wb") as fh:
-            fh.truncate(1048576)
-        with open(os.path.join(proj, "data", "stack.mrcs"), "wb") as fh:
-            fh.truncate(1024)
-
-        proposed = sc.connect_github(proj)
-        check("with no --repo, a repository is proposed and nothing created",
-              proposed["needs_confirmation"] and not proposed["ok"]
-              and proposed["proposed_repo"] == "demo_project"
-              and not proposed["created_repository"], proposed)
-        res = sc.connect_github(proj, url=bare)
-        check("github connects, commits and pushes", res["ok"], res)
-        pushed = subprocess.run(["git", "-C", bare, "ls-tree", "-r",
-                                 "--name-only", "main"], capture_output=True,
-                                text=True).stdout.splitlines()
-        check("the project reached the remote",
-              "project.yml" in pushed and sc.SYNC_SCRIPT in pushed, pushed[:5])
-        check("a large file and a folder of large files stay off GitHub",
-              not any(p.startswith("data/raw/movies/") or p == "data/big map.mrc"
-                      for p in pushed), [p for p in pushed if "data/" in p])
-        check("...a small data file does not",
-              "data/small.mrc" in pushed, pushed)
-        check("...and a raw cryo-EM format stays off whatever its size",
-              "data/stack.mrcs" not in pushed)
-        out = "\n".join(res["sync_output"])
-        check("what was kept off is reported, folder collapsed to one line",
-              "data/raw/movies/ " in out and "data/big map.mrc" in out
-              and "m0.tif" not in out, out)
-
-        again = sc.connect_github(proj)
-        check("a second run changes nothing and stays connected",
-              again["ok"] and not any("wrote" in s or "added" in s
-                                      for s in again["steps"]), again)
-
-        clone = os.path.join(root, "other_computer")
-        subprocess.run(["git", "clone", "-q", "-b", "main", bare, clone],
-                       check=True)
-        write(clone, "plan/notes_from_laptop.md", "laptop\n")
-        env = dict(os.environ, CLAUDE_PROJECT_DIR=clone)
-        bash = sc._find_bash()
-        subprocess.run([bash, os.path.join(clone, *sc.SYNC_SCRIPT.split("/")),
-                        "end"], env=env, check=True)
-        write(proj, "plan/left_unsaved.md", "unsaved\n")
-        env = dict(os.environ, CLAUDE_PROJECT_DIR=proj)
-        r = subprocess.run([bash, os.path.join(proj, *sc.SYNC_SCRIPT.split("/")),
-                            "start"], env=env, capture_output=True, text=True)
-        check("opening a session saves what the last one left unsaved",
-              "closed before it could save" in r.stdout, r.stdout)
-        check("...and brings in the other computer's work",
-              os.path.exists(os.path.join(proj, "plan", "notes_from_laptop.md")))
+        # Asked for by its old name, it says where it went - not a usage
+        # error, and not a run of anything.
+        r = subprocess.run([sys.executable, ENGINE, "github", proj,
+                            "--repo", "x"], capture_output=True, text=True,
+                           encoding="utf-8", errors="replace")
+        check("`scaffold.py github` exits 2 with the redirect",
+              r.returncode == 2 and MANAGER_URL in r.stderr
+              and "usage:" not in r.stderr, r.stdout + r.stderr)
+        eq("...and made nothing a repository",
+              os.path.exists(os.path.join(proj, ".git")), False)
+        r = subprocess.run([sys.executable, ENGINE, "--json", "github"],
+                           capture_output=True, text=True, encoding="utf-8",
+                           errors="replace")
+        check("...and under --json the redirect is the error",
+              r.returncode == 2 and MANAGER_URL in
+              json.loads(r.stdout or "{}").get("error", ""), r.stdout)
     finally:
-        for k, v in env_keep.items():
+        shutil.rmtree(root, ignore_errors=True)
+
+
+MANAGER_URL = "https://github.com/mercer-science/github-ai-project-manager"
+
+
+def test_github_offer():
+    section("GitHub: whether to offer, and the hand-over")
+    root, proj, _ = new_project(title="Offer")
+    sandbox = tempfile.mkdtemp(prefix="scaffold_gpm_")
+    keep = {k: os.environ.get(k) for k in
+            ("PATH", "PAPER_ENGINE_CODEX_PLUGINS_DIR")}
+    try:
+        fakebin = os.path.join(sandbox, "bin")
+        os.makedirs(fakebin)
+        os.environ["PAPER_ENGINE_CODEX_PLUGINS_DIR"] = os.path.join(
+            sandbox, "codex")
+        os.environ["PATH"] = fakebin     # nothing called gpm on it, yet
+
+        res = sc.github_offer(proj)
+        eq("a fresh project is offered GitHub", res["offer"], True, res)
+        eq("...with the manager not installed",
+              res["manager"]["installed"], False, res["manager"])
+        check("...and the hand-over suggests data/ with the engine's one "
+              "fact about it",
+              res["connect"][:3] == ["gpm", "connect", proj]
+              and res["connect"][3:] == ["--suggest-data", "data",
+                                         "--context", sc.DATA_CONTEXT],
+              res["connect"])
+        check("the fact names what a laptop clone would lose",
+              "methods_facts.yml" in sc.DATA_CONTEXT
+              and "analysis" in sc.DATA_CONTEXT, sc.DATA_CONTEXT)
+        eq("no synced folder in a temporary path",
+              res["synced_folder"], "")
+
+        # Installed as a plugin under Codex's cache: found, and run by path
+        # through bash, which is what works on Windows too.
+        gpm = os.path.join(sandbox, "codex", "cache", "mkt",
+                           sc.MANAGER, "2026.9.30", "bin", "gpm")
+        write(os.path.dirname(gpm), "gpm", "#!/usr/bin/env bash\n")
+        res = sc.github_offer(proj)
+        check("a Codex plugin install is found",
+              res["manager"]["installed"] and res["manager"]["gpm"] == gpm,
+              res["manager"])
+        check("...and handed over through bash",
+              res["connect"][:3] == ["bash", gpm, "connect"], res["connect"])
+        # And one under Claude Code's cache.
+        shutil.rmtree(os.path.join(sandbox, "codex"))
+        cgpm = os.path.join(os.environ["PAPER_ENGINE_PLUGINS_DIR"], "cache",
+                            "mkt", sc.MANAGER, "2026.9.30", "bin", "gpm")
+        write(os.path.dirname(cgpm), "gpm", "#!/usr/bin/env bash\n")
+        eq("a Claude Code plugin install is found",
+              sc.find_manager()["gpm"], cgpm)
+        shutil.rmtree(os.path.join(os.environ["PAPER_ENGINE_PLUGINS_DIR"],
+                                   "cache"))
+        # On PATH wins, and runs as itself.
+        onpath = write(fakebin, "gpm", "#!/usr/bin/env bash\n")
+        os.chmod(onpath, 0o755)
+        if os.name == "nt":
+            shutil.copyfile(onpath, onpath + ".bat")
+        eq("gpm on PATH is found", sc.find_manager()["via"], "PATH")
+        eq("...and runs as itself",
+              sc.github_offer(proj)["connect"][:2], ["gpm", "connect"])
+        os.environ["PATH"] = keep["PATH"] or ""
+
+        # No data/: nothing to suggest, and no sentence about it.
+        r2, p2, _ = new_project(title="Perspective", expects_data="none")
+        try:
+            got = sc.github_offer(p2)["connect"]
+            eq("a project with no data/ suggests none",
+                  "--suggest-data" in got or "--context" in got, False, got)
+        finally:
+            shutil.rmtree(r2, ignore_errors=True)
+
+        # A decline is recorded once and stops the offer.
+        d = sc.decline_github(proj)
+        check("--decline records github: declined",
+              d["action"] == "added"
+              and sc.read_project_yml(proj).get("github") == "declined", d)
+        eq("...a second decline changes nothing",
+              sc.decline_github(proj)["action"], "already recorded")
+        res = sc.github_offer(proj)
+        eq("...and a declined project is not offered again",
+              (res["offer"], res["declined"]), (False, True), res)
+
+        # A folder inside OneDrive is named, so the warning comes first.
+        od = os.path.join(sandbox, "OneDrive - Uni", "proj")
+        os.makedirs(od)
+        eq("a OneDrive folder is named",
+              sc.github_offer(od)["synced_folder"], "OneDrive")
+        eq("a missing folder is an error, not an offer",
+              bool(sc.github_offer(os.path.join(sandbox, "nope"))["error"]),
+              True)
+
+        # Already its own repository with an origin: no offer.
+        if shutil.which("git"):
+            r3, p3, _ = new_project(title="Repo")
+            try:
+                subprocess.run(["git", "init", "-q", p3], check=True)
+                eq("a repository with no origin is still offered",
+                      sc.github_offer(p3)["offer"], True)
+                subprocess.run(["git", "-C", p3, "remote", "add", "origin",
+                                "https://example.org/x.git"], check=True)
+                res = sc.github_offer(p3)
+                eq("...one with an origin is not",
+                      (res["offer"], res["origin"]),
+                      (False, "https://example.org/x.git"), res)
+            finally:
+                shutil.rmtree(r3, ignore_errors=True)
+        else:
+            skip("an origin stops the offer", "git not found")
+
+        # The old sync: said only when the manager could take it over.
+        write(proj, sc.LEGACY_SYNC_SCRIPT, LEGACY_SYNC)
+        os.environ["PATH"] = fakebin
+        res = sc.github_offer(proj)
+        eq("the engine's old sync is recognised",
+              res["legacy_sync"] and res["legacy_takeover"], True, res)
+        os.remove(onpath)
+        if os.name == "nt":
+            os.remove(onpath + ".bat")
+        res = sc.github_offer(proj)
+        eq("...and without the manager it is not raised",
+              (res["legacy_sync"], res["legacy_takeover"]), (True, False))
+        os.environ["PATH"] = keep["PATH"] or ""
+        write(proj, sc.LEGACY_SYNC_SCRIPT, "#!/usr/bin/env bash\necho hi\n")
+        eq("a script without the marker is not the old sync",
+              sc.has_legacy_sync(proj), False)
+
+        r = subprocess.run([sys.executable, ENGINE, "github-offer", proj,
+                            "--json"], capture_output=True, text=True,
+                           encoding="utf-8", errors="replace")
+        check("github-offer --json runs from the command line",
+              r.returncode == 0 and json.loads(r.stdout)["path"]
+              == os.path.abspath(proj), r.stdout + r.stderr)
+    finally:
+        for k, v in keep.items():
             if v is None:
                 os.environ.pop(k, None)
             else:
                 os.environ[k] = v
+        shutil.rmtree(root, ignore_errors=True)
+        shutil.rmtree(sandbox, ignore_errors=True)
+
+
+# A made-up stand-in for the engine's old sync.sh. Only its marker line
+# matters: that is what the engine and the manager both recognise it by, and
+# it is the manager's bin/gpm that pins the string.
+LEGACY_SYNC = ("#!/usr/bin/env bash\n# Keeps this project in step with its "
+               "GitHub repository.\nKEEP_MB=50\nDIR_MB=500\n"
+               "KEPT_NOTE=.git/paper-engine-kept-off\n")
+LEGACY_SETTINGS = json.dumps({
+    "permissions": {"allow": ["Bash(ls:*)"], "deny": []},
+    "hooks": {"SessionStart": [{"matcher": "startup|resume", "hooks": [{
+        "type": "command",
+        "command": 'bash "$CLAUDE_PROJECT_DIR/.claude/hooks/sync.sh" start',
+        "timeout": 60}]}]}}, indent=2) + "\n"
+LEGACY_GITIGNORE = (".claude/*\n!.claude/settings.local.json\n"
+                    "!.claude/hooks/\n\n*.eer\n*.dm4\n\n# Kept off GitHub by "
+                    "the project sync: too large for a repository.\n"
+                    "/data/raw/movies/\n")
+
+
+def test_legacy_sync_is_untouched():
+    section("GitHub: a project with the old sync keeps it, byte for byte")
+    root = tempfile.mkdtemp(prefix="scaffold_legacy_")
+    try:
+        proj = os.path.join(root, "old_project")
+        values = sc.build_values(project_name="old_project")
+        sc.scaffold(proj, values)
+        write(proj, sc.LEGACY_SYNC_SCRIPT, LEGACY_SYNC)
+        write(proj, ".claude/settings.local.json", LEGACY_SETTINGS)
+        write(proj, ".gitignore", LEGACY_GITIGNORE)
+        write(proj, "run1.csv", "a,b\n1,2\n")         # something to move
+        write(proj, "mystery.qqq", "?\n")             # something to sweep
+        legacy = (sc.LEGACY_SYNC_SCRIPT, ".claude/settings.local.json",
+                  ".gitignore")
+        before = {p: sha(proj, p) for p in legacy}
+
+        def same(label):
+            eq(label, {p: sha(proj, p) for p in legacy}, before)
+
+        sc.scaffold(proj, values)
+        same("a re-scaffold leaves the old sync, its hooks and its "
+             ".gitignore alone")
+        sc.adopt(proj, values)
+        same("...so does adopt")
+        sc.adopt(proj, values, apply_moves=True, depth=2, sweep_unknown=True)
+        same("...and reorganize-directory's apply (--apply, --depth, "
+             "--sweep-unknown)")
+        eq("...which did move the files it was asked to",
+              os.path.isfile(os.path.join(proj, "data", "raw", "run1.csv")),
+              True)
+    finally:
         shutil.rmtree(root, ignore_errors=True)
 
 
@@ -3450,7 +3604,9 @@ def main():
     test_sweep_unknown()
     test_float_order()
     test_reorganize_report()
-    test_github_sync()
+    test_github_is_not_scaffolded()
+    test_github_offer()
+    test_legacy_sync_is_untouched()
 
     rscript = find_rscript()
     if not rscript:

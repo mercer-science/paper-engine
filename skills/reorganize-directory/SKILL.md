@@ -82,6 +82,7 @@ without `--apply`, it never deletes, and it never renames.**
 | set up / start / scaffold a project | `setup-project-directory` — an empty folder is a different job |
 | there is a `notes/` folder, can the drafter use it | `scaffold.py survey` alone; no reorganisation needed |
 | is anything missing | `scaffold.py check` alone |
+| put this on GitHub, sync this between my computers, stop syncing | **Not this skill.** github-ai-project-manager does it; run `github-offer` and hand over as in "GitHub", skipping the question |
 
 ## The Conversation, in Order
 
@@ -103,8 +104,9 @@ four more steps on the end.
 6. **Then the lab pack brief**, if this lab has a pack — one command, one
    line said about it, no question.
 7. **Then the report** — every row saying what it did or why it could not.
+8. **Then the GitHub offer**, once the moves are done — see "GitHub".
 
-**The rule that outranks all six: do not move the `ask` rows on the user's
+**The rule that outranks every step: do not move the `ask` rows on the user's
 behalf, even when it seems obvious.** This skill adds and it sorts; it does not
 reorganise somebody's work on a guess.
 
@@ -274,6 +276,61 @@ the notes forward.
   number contradicts what the user knows, the user is right and the pack is
   stale.
 
+<!-- github-offer: this block is byte-identical in setup-project-directory
+     and reorganize-directory, and tests/portability.py holds it so. Change
+     both or neither. Spec: specs/github-offer-2026-09-30.md -->
+## GitHub — Offer It, Then Hand Over
+
+**This skill never puts a project on GitHub itself.** It does not make the
+folder a repository, create one, push, or write a hook: all of that belongs to
+[github-ai-project-manager](https://github.com/mercer-science/github-ai-project-manager),
+which works with or without the paper engine. This skill offers, and hands
+over. It comes **once the tree is finished** — after the scaffold, after the
+moves — so that the first commit is the finished tree, not the mess it
+replaced.
+
+```bash
+python <tools>/scaffold.py github-offer "<path>" --json
+```
+
+Read the result; do not re-derive any of it. It never reaches a network.
+
+1. **`synced_folder` is set** → say it first, before any offer: *"This folder
+   is inside `<synced_folder>`. A git repository inside a synced folder
+   corrupts `.git`, so if you want it on GitHub, move the project to an
+   ordinary folder first."*
+2. **`legacy_takeover` is true** → say once: *"This project uses the paper
+   engine's old GitHub sync. The manager can take it over and will ask you
+   about data first."* A yes runs the `connect` command below. **Never delete
+   or edit the project's `.claude/hooks/sync.sh` yourself**: it keeps working
+   until the manager replaces it. When `legacy_sync` is true and the manager
+   is not installed, say nothing about it.
+3. **`offer` is false** → say nothing about GitHub. `skip_reason` is why.
+4. **`offer` is true** → ask, in these words:
+
+> Would you like this project on GitHub? It keeps a backup, and it keeps the
+> project in step between computers — the lab computer and your laptop, say.
+> It's optional; the paper engine works exactly the same without it.
+
+| Answer | What to do |
+|---|---|
+| **Yes**, and `manager.installed` | Say *"I'll use github-ai-project-manager for this."* and run the `connect` command from the result, exactly as given. From there the manager's `github-project` skill drives, including the repository name and the data question |
+| **Yes**, and not installed | One sentence on what it is — *a separate tool that keeps a project folder on GitHub and in step between computers* — then the install for the CLI you are running in, and offer to run it. **A CLI that installs plugins from a marketplace:** add the marketplace `mercer-science/github-ai-project-manager` and install the plugin `github-ai-project-manager` (`/plugin marketplace add …`, then `/plugin install …`, where the CLI has `/plugin`). **Any other CLI, or without plugins:** `git clone https://github.com/mercer-science/github-ai-project-manager`, then `bash github-ai-project-manager/install.sh`, which puts `gpm` on `PATH`. Once installed, run `github-offer` again and hand over as above. A declined install is **Not now** |
+| **No** | `python <tools>/scaffold.py github-offer "<path>" --decline`, then *"OK — the project is on this computer only."* |
+| **Not now** | Record nothing. *"Ask me any time to put it on GitHub."* |
+
+**The data question is the manager's, never this skill's.** Do not ask which
+data to keep off GitHub, do not recommend an answer, and do not write a
+`.gitignore` line. `--suggest-data data` in the `connect` command only tells
+the manager where this project keeps data; the manager asks about **all** of
+it. The `--context` sentence is the one fact the manager cannot know — that
+`data/` also holds the methods facts and the analysis — and the manager passes
+it on to the user. The user decides.
+
+**A decline is about being asked, not a lock.** A user who later says *"put
+this on GitHub"* goes straight to the manager, whatever `project.yml` says.
+<!-- /github-offer -->
+
 ## What This Skill Does Not Do
 
 - **It does not rename anything, ever.** A file called `Figure 2 final.png`
@@ -288,6 +345,10 @@ the notes forward.
 - **It does not infer `expects_data`.** Declared, never sniffed. A folder of
   CSVs in an `expects_data: none` project stays the contradiction the engine
   already surfaces — one of the two is wrong and only the user knows which.
+- **It does not put the folder on GitHub.** It offers, and
+  github-ai-project-manager does it. A project that already carries the
+  engine's old `.claude/hooks/sync.sh` keeps it, byte for byte: nothing here
+  moves, edits or deletes it.
 - **It writes no disclosure and no cover letter.** Both are built elsewhere and
   refuse honestly; a reorganize-time disclosure would be a second answer to a
   compliance question.

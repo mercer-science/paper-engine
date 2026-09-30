@@ -1469,8 +1469,8 @@ def merge(records: list[dict], other: list[dict]) -> dict:
     Same id and same evidence is a no-op; same id and different evidence
     merges the evidence lists and re-evaluates the threshold; a genuinely
     different rule under an id already in use is RENUMBERED rather than
-    dropped, and reported. Nothing here is a git operation: do not `git init`
-    inside a shared folder to solve this.
+    dropped, and reported. Nothing here is a git operation: do not make a
+    shared folder a git repository to solve this.
     """
     by_id = {r["id"]: r for r in records}
     added, merged, renumbered, conflicted = [], [], [], []

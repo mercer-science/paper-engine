@@ -25,7 +25,7 @@ python <tools>/scaffold.py scaffold "<path>" --json [--title ...] [--field ...] 
                                              [--journal ...] [--pi ...] [--dry-run]
 python <tools>/scaffold.py check "<path>" --json     # what is present / missing
 python <tools>/scaffold.py tree  "<path>"            # print the annotated tree
-python <tools>/scaffold.py github "<path>" --json [--owner ORG] [--url URL]
+python <tools>/scaffold.py github-offer "<path>" --json   # offer GitHub? see "GitHub"
 
 python <tools>/scaffold.py adopt "<path>" --json [--expects-data ...] [--apply]
 python <tools>/scaffold.py survey "<path>" --json     # what the tree does not explain
@@ -85,8 +85,8 @@ restores only what went missing.
 | Invoked with a path to an empty directory | Scaffold in place, no questions beyond the metadata |
 | Invoked with a path that already has files | **Use `adopt`, not `scaffold`.** It does everything `scaffold` does and then says what to do with the files that were already there. See "Adopting a folder that already exists" |
 | "fix up / reorganise this folder", "my folder is a mess", "files everywhere" | **`reorganize-directory`**, the skill for a folder that already has months of work in it. It calls the same `adopt` and then does the three things this skill does not: depth, the sweep into `sandbox/unsorted/`, and the figure-order read |
-| Invoked by `idea-generation` | The path is already decided. Skip the ask, scaffold, connect it to GitHub, hand straight back |
-| "put this project on GitHub", "sync this between my computers", or an existing project with no `.git` | **`github` alone** — see "GitHub". It adds the sync to a project scaffolded before it existed and never touches the user's files |
+| Invoked by `idea-generation` | The path is already decided. Skip the ask, scaffold, make the GitHub offer, hand straight back |
+| "put this project on GitHub", "sync this between my computers", "stop syncing" | **Not this skill.** github-ai-project-manager does it. Run `github-offer` and hand over as in "GitHub", skipping the question — they already said yes, and a `github: declined` in `project.yml` does not stop them |
 
 ## Adopting a Folder That Already Exists
 
@@ -191,7 +191,6 @@ unsure, take the default, scaffold, and say which default you took.
 | Mock data? | no | Synthetic rows shaped like the hypothesis, so figures can be built and criticised before any sample exists. **Offered only for `measurements`** |
 | Mock figures and tables? | no | Fills the pre-made slots, so `render_all.R` produces a real preview on day one. **Offered only for `measurements`** |
 | Image placeholder figures? | no | The `images` counterpart: figure slots laid out as grey panels saying what image is expected in each. **Offered only for `images`** |
-| GitHub: whose account? | the user's own, **private** | Where its repository is created. Ask once, with the default stated; an organisation needs `--owner`. "No GitHub" is a real answer: skip the step and say the project is on this computer only |
 
 Also pass `--title` and `--pi` when the user has already said them. A working
 title is fine; it is not a commitment.
@@ -278,81 +277,17 @@ Use `--dry-run` first only when the target already has files in it and the user
 seems uneasy about it. Otherwise it is a wasted round-trip; the engine cannot
 overwrite anything.
 
-## GitHub
-
-**Every new project gets its own private repository by default**, straight
-after the scaffold and before the report, so the first commit is the
-scaffold itself:
-
-```bash
-python <tools>/scaffold.py github "<path>" --json [--owner ORG]   # proposes a name
-python <tools>/scaffold.py github "<path>" --json [--owner ORG] --repo NAME
-```
-
-**Confirm the repository name with the user before anything is created.**
-Run `github` without `--repo` first: when it would create a repository it
-creates nothing, returns `needs_confirmation` and a `proposed_repo` slug of
-the folder name, and stops. Ask:
-
-> I'll put this on GitHub as a **private** repository named
-> **`<owner>/<proposed_repo>`**. OK, or would you like a different name?
-
-Re-run with `--repo <the name they confirmed>` only after they answer. Never
-pass `--repo` with a name the user has not seen — renaming a repository later
-breaks every clone of it.
-
-It then makes the folder a repository, creates the private GitHub repository
-with `gh`, and runs the first sync. From then on the project keeps itself in step:
-the hooks in `.claude/settings.local.json` run `.claude/hooks/sync.sh` when a
-session opens (commit what the last one left, pull, push) and when it ends
-(`/exit`, `/clear`). Say that in one sentence; the user does not need the
-mechanism.
-
-**Large data never reaches GitHub, and say so the first time.** Raw cryo-EM
-formats (`.eer`, `.dm4`, `.mrcs`, `.st`, `.ali`) are ignored by the template,
-and before every commit the sync adds any new file of 50 MB or more, or new
-folder of 500 MB or more, to `.gitignore`. It stays on the computer that made
-it. The next session opens with a `Project sync:` line listing what was kept
-off. **Relay it and ask whether that is right**; if the user wants one on
-GitHub, delete its line from `.gitignore`. Analyses that read raw data run on
-the machine that holds it, which is usually the lab computer.
-
-Read `problems` in the result; each is a sentence the user can act on:
-
-| Problem | What to do |
-|---|---|
-| `gh` not installed | Offer to install it — `sudo apt install gh` on Linux, `winget install GitHub.cli` on Windows — then `gh auth login` (HTTPS, log in with a browser), then re-run. Or the user creates an **empty** private repository at github.com/new and you re-run with `--url` |
-| `gh` not logged in | `gh auth login`, then re-run |
-| git has no name/email | Offer the two `git config --global` lines with their name and email filled in, then re-run |
-| settings file is not valid JSON | Show the user the error; do not rewrite their file |
-
-`github` is safe to re-run: it only adds what is missing, keeps an existing
-remote, and brings the sync script up to date. **Never put a project that is
-a git repository inside a OneDrive- or Dropbox-synced folder** — two sync
-tools moving the same files corrupt `.git`. If `<path>` is inside one, say so
-before connecting and suggest an ordinary folder.
-
-### In a Cloud Session
+## In a Cloud Session
 
 Idea generation needs nothing opened on the user's machine, so it runs well in
-a cloud session, and the project can be born there. Three differences:
+a cloud session, and the project can be born there. **The literature engines
+need network access** the environment may not allow. If `scholar.py` or
+`pubmed.py` cannot connect, name the hosts it could not reach and tell the
+user to add them under the environment's network settings. Do not substitute
+search results from memory.
 
-- **The session cannot create a repository and has no `gh`.** Ask the user to
-  create an **empty private** repository at github.com/new (no README, no
-  `.gitignore`, no licence), suggesting the name you would have proposed,
-  and tell you the name they chose. Attach it to the session,
-  clone it, and scaffold **into the clone** — the clone already has its
-  remote, so `github "<clone>"` skips creation and just installs the sync and
-  pushes.
-- **Push to `main`** — the project's only branch — not a session branch.
-- **The literature engines need network access** the environment may not
-  allow. If `scholar.py` or `pubmed.py` cannot connect, name the hosts it
-  could not reach and tell the user to add them under the environment's
-  network settings. Do not substitute search results from memory.
-
-Then tell the user the one step left on their own computer: `git clone` the
-repository into their projects folder and open a session there. The sync
-takes over from that point.
+Putting a cloud-born project on GitHub is the manager's job like any other,
+and its skill covers the cloud route.
 
 ## Reporting back
 
@@ -816,6 +751,61 @@ That skill writes `panelA_source.pptx` into the float's own folder plus a
 plotted panels through `graphic_panel()`. `render_all.R` stays the only command
 anyone runs. Art that does not exist yet renders as a dashed placeholder, so a
 figure can be composed before any of it is drawn.
+
+<!-- github-offer: this block is byte-identical in setup-project-directory
+     and reorganize-directory, and tests/portability.py holds it so. Change
+     both or neither. Spec: specs/github-offer-2026-09-30.md -->
+## GitHub — Offer It, Then Hand Over
+
+**This skill never puts a project on GitHub itself.** It does not make the
+folder a repository, create one, push, or write a hook: all of that belongs to
+[github-ai-project-manager](https://github.com/mercer-science/github-ai-project-manager),
+which works with or without the paper engine. This skill offers, and hands
+over. It comes **once the tree is finished** — after the scaffold, after the
+moves — so that the first commit is the finished tree, not the mess it
+replaced.
+
+```bash
+python <tools>/scaffold.py github-offer "<path>" --json
+```
+
+Read the result; do not re-derive any of it. It never reaches a network.
+
+1. **`synced_folder` is set** → say it first, before any offer: *"This folder
+   is inside `<synced_folder>`. A git repository inside a synced folder
+   corrupts `.git`, so if you want it on GitHub, move the project to an
+   ordinary folder first."*
+2. **`legacy_takeover` is true** → say once: *"This project uses the paper
+   engine's old GitHub sync. The manager can take it over and will ask you
+   about data first."* A yes runs the `connect` command below. **Never delete
+   or edit the project's `.claude/hooks/sync.sh` yourself**: it keeps working
+   until the manager replaces it. When `legacy_sync` is true and the manager
+   is not installed, say nothing about it.
+3. **`offer` is false** → say nothing about GitHub. `skip_reason` is why.
+4. **`offer` is true** → ask, in these words:
+
+> Would you like this project on GitHub? It keeps a backup, and it keeps the
+> project in step between computers — the lab computer and your laptop, say.
+> It's optional; the paper engine works exactly the same without it.
+
+| Answer | What to do |
+|---|---|
+| **Yes**, and `manager.installed` | Say *"I'll use github-ai-project-manager for this."* and run the `connect` command from the result, exactly as given. From there the manager's `github-project` skill drives, including the repository name and the data question |
+| **Yes**, and not installed | One sentence on what it is — *a separate tool that keeps a project folder on GitHub and in step between computers* — then the install for the CLI you are running in, and offer to run it. **A CLI that installs plugins from a marketplace:** add the marketplace `mercer-science/github-ai-project-manager` and install the plugin `github-ai-project-manager` (`/plugin marketplace add …`, then `/plugin install …`, where the CLI has `/plugin`). **Any other CLI, or without plugins:** `git clone https://github.com/mercer-science/github-ai-project-manager`, then `bash github-ai-project-manager/install.sh`, which puts `gpm` on `PATH`. Once installed, run `github-offer` again and hand over as above. A declined install is **Not now** |
+| **No** | `python <tools>/scaffold.py github-offer "<path>" --decline`, then *"OK — the project is on this computer only."* |
+| **Not now** | Record nothing. *"Ask me any time to put it on GitHub."* |
+
+**The data question is the manager's, never this skill's.** Do not ask which
+data to keep off GitHub, do not recommend an answer, and do not write a
+`.gitignore` line. `--suggest-data data` in the `connect` command only tells
+the manager where this project keeps data; the manager asks about **all** of
+it. The `--context` sentence is the one fact the manager cannot know — that
+`data/` also holds the methods facts and the analysis — and the manager passes
+it on to the user. The user decides.
+
+**A decline is about being asked, not a lock.** A user who later says *"put
+this on GitHub"* goes straight to the manager, whatever `project.yml` says.
+<!-- /github-offer -->
 
 ## Hand-off
 

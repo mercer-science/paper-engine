@@ -79,7 +79,7 @@ rows.
 | `pubmed.py` | The PubMed backend `scholar.py` wraps, and the only route to full text (`sections`) and OA PDFs |
 | `structure.py` | AlphaFold, UniProt, RCSB, PDBe, EMDB. Keyless, no skill |
 | `sequence.py` | BLAST, the genes either side of one on a contig, and what to do when AlphaFold DB has no model. Submit-then-poll, and the CLI does not hide it. **Evidence for feasibility and methods, never for a gap** — a BLAST miss is not evidence of novelty. Offered in idea-generation Stage 5, never run unasked |
-| `scaffold.py` | The project structure, the R float pipeline, `adopt` (scaffold a folder that already has work in it and propose a home for the rest, now with `--depth` and `--sweep-unknown`), `survey`, `float-order` (what the filenames imply about the float set — proposes, never renames), `report` (what this folder can and cannot now do), `image-floats`, `harvest`, `prefill`, `float lint` |
+| `scaffold.py` | The project structure, the R float pipeline, `github-offer` (whether to offer GitHub and the hand-over to github-ai-project-manager; the engine no longer runs git itself), `adopt` (scaffold a folder that already has work in it and propose a home for the rest, now with `--depth` and `--sweep-unknown`), `survey`, `float-order` (what the filenames imply about the float set — proposes, never renames), `report` (what this folder can and cannot now do), `image-floats`, `harvest`, `prefill`, `float lint` |
 | `idea.py` | The deterministic half of idea generation: resolve, context, write, merge |
 | `manuscript.py` | State and the build — 33 subcommands: init, status, config, ai-disclosure, outline, plan, agent-brief, reading-findings, ai-voice-findings, flag-answers, retention, run, round, retire-journal, handoff, assemble, supplementary, landscape, submission-package, submission-names, strays, import-prose, move-passage, log-issue, reference-doc, format-check, completeness, figure-files, authors, bib, ris, ingest, response. The only thing here that needs pandoc |
 | `prose.py` | Every prose rule with a countable answer — 16 subcommands, `italics`, `entity_forms` and `abbreviations` the newest. Pure stdlib, fully offline. **Nothing here gates**: every one exits 0 with findings. **TWO of them WRITE** under `--fix` — `spelling`, and the always-italic half of `italics` — and both earn it the same way: an exact substring, a lookup, no threshold, every false positive nameable. **Nothing here is merely reported, either** — prose 12: `readability` and `metaprose` findings are handed to module 1c and fixed before any checker reads the paper. The densities are not, and that is what keeps the pass from chasing a number |
@@ -105,10 +105,13 @@ modules and are still callable standalone.
 
 ### What Was Last Measured
 
-**2026-09-28, at publication.** Every offline suite green on Python 3.12 with
-pandoc and the five optional packages installed: manuscript **2700**,
-portability **1190**, scaffold **550**, and the rest unchanged. Run the suites
-`AGENTS.md` names before claiming a change is done.
+**2026-09-30, after GitHub moved to github-ai-project-manager.** Offline
+suites on Python 3.12 with pandoc 3.1.3 and the optional packages, no R:
+manuscript **2735** (1 skipped), portability **1236**, scaffold **574**
+(6 skipped; the 12 checks of the old sync gone, 36 for the offer added),
+labpack **359**, prose 475, learn 259, install 190, idea 192, review 161,
+docx_edits 107, help_deck 118. Run the suites `AGENTS.md` names before
+claiming a change is done.
 
 ## The Failure This Toolkit Exists to Catch
 

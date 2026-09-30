@@ -2326,6 +2326,67 @@ def test_section_order(tmp: str) -> None:
 # The run ledger
 # ---------------------------------------------------------------------------
 
+def test_defect_list_survives_a_plugin_update(tmp: str) -> None:
+    section("The defect list lives outside the plugin cache (github-offer 8.2)")
+
+    # A plugin update installs a new version directory, so a list written
+    # beside the engine inside the cache is left behind with the old one.
+    # The engine is copied into a fake cache and run from there, as a member
+    # running `python tools/manuscript.py` from a terminal would.
+    base = tempfile.mkdtemp(prefix="ms_cache_", dir=tmp)
+    plugins = os.path.join(base, "plugins")
+    home = os.path.join(base, "home")
+
+    def install(where: str) -> str:
+        tools = os.path.join(where, "tools")
+        os.makedirs(tools)
+        for f in ("manuscript.py", "labpack.py", "prose.py",
+                  "system-changes.template.md"):
+            shutil.copy(os.path.join(ROOT, "tools", f), tools)
+        return os.path.join(tools, "manuscript.py")
+
+    env = {k: v for k, v in os.environ.items()
+           if k not in ("SYSTEM_CHANGES_MD", "CLAUDE_PLUGIN_ROOT",
+                        "PAPER_ENGINE_TOOLKIT")}
+    env.update(PAPER_ENGINE_PLUGINS_DIR=plugins, PAPER_ENGINE_HOME=home,
+               PYTHONIOENCODING="utf-8")
+
+    def log(engine: str, code: str) -> "subprocess.CompletedProcess[str]":
+        return subprocess.run(
+            [sys.executable, engine, "log-issue", base, "--code", code,
+             "--detail", "what happened", "--title", "A thing seen",
+             "--wanted", "not that", "--verify", "look again"],
+            capture_output=True, text=True, encoding="utf-8",
+            errors="replace", env=env)
+
+    v1 = os.path.join(plugins, "cache", "mkt", "paper-engine", "2026.9.1")
+    r = log(install(v1), "seen_in_version_one")
+    durable = os.path.join(home, "system-changes.md")
+    check("inside a plugin install, log-issue writes under ~/.paper-engine",
+          os.path.isfile(durable), True, r.stdout + r.stderr)
+    check("...and not into the cache",
+          os.path.exists(os.path.join(v1, "system-changes.md")), False)
+    check("...and ends by naming the file it wrote",
+          r.stdout.rstrip().splitlines()[-1:],
+          [f"  defect list: {durable}"], r.stdout)
+
+    v2 = os.path.join(plugins, "cache", "mkt", "paper-engine", "2026.9.2")
+    r = log(install(v2), "seen_in_version_two")
+    text = read(durable) if os.path.isfile(durable) else ""
+    check("the next version sees the same list",
+          "seen_in_version_one" in text and "seen_in_version_two" in text,
+          True, r.stdout + r.stderr)
+
+    clone = os.path.join(base, "clone")
+    home2 = os.path.join(base, "home2")
+    env["PAPER_ENGINE_HOME"] = home2
+    r = log(install(clone), "seen_in_a_clone")
+    check("a source clone still writes at the engine root",
+          os.path.isfile(os.path.join(clone, "system-changes.md"))
+          and not os.path.exists(os.path.join(home2, "system-changes.md")),
+          True, r.stdout + r.stderr)
+
+
 def test_run_ledger(tmp: str) -> None:
     section("A run that stops half way can be picked up (the run ledger)")
 
@@ -13811,6 +13872,7 @@ def main() -> int:
         test_outline_absent(tmp)
         test_section_order(tmp)
         test_run_ledger(tmp)
+        test_defect_list_survives_a_plugin_update(tmp)
         test_bib(tmp)
         test_journal_budget(tmp)
         test_intensity(tmp)

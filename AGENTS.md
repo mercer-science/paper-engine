@@ -284,6 +284,7 @@ stops being the explanation.
 | is my corpus complete, what did I miss, how many did I exclude and why | `review.py coverage` / `prisma` | modular |
 | is this readable, does this make sense, is it too technical, does it flow | `prose.py readability`, and offer `comprehension-check` | the module reads the paper and reports what it understood; `readability` is the countable half and costs nothing |
 | the engine did something wrong / it keeps doing X | `manuscript.py log-issue` | **never** write into `system-changes.md` by hand |
+| put this on GitHub, sync this between my computers, stop syncing, put this file on GitHub | github-ai-project-manager (its `github-project` skill), when installed; otherwise the install offer | **not** `setup-project-directory`: the engine no longer does GitHub. `scaffold.py github-offer <path> --json` says whether the manager is installed and gives the hand-over command. What is kept off GitHub is the user's answer to the manager's question, never the engine's |
 
 **When the cue is ambiguous, ask one question with the two candidates named.**
 Do not run the cheaper one to find out.

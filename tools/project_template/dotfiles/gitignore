@@ -16,19 +16,6 @@ Thumbs.db
 desktop.ini
 
 # Local Claude Code state (settings.local.json is kept deliberately - it holds
-# the pre-approved commands and the GitHub sync hooks - and so is the sync
-# script those hooks run)
+# the pre-approved commands)
 .claude/*
 !.claude/settings.local.json
-!.claude/hooks/
-
-# Raw instrument data stays on the computer that collected it: GitHub refuses
-# a file over 100 MB and a repository slows long before that. These formats are
-# never part of a paper - cryo-EM movies (EER, DM4), particle stacks (MRCS) and
-# tilt series (ST, ALI). The project sync also keeps any new file of 50 MB or
-# more off GitHub and says so, so a format missing here is still caught.
-*.eer
-*.dm4
-*.mrcs
-*.st
-*.ali

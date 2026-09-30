@@ -16,6 +16,11 @@ or "Claude: The answer to this flag is:..."). When you run it again, the engine 
 automatically update the paragraphs, reconfirm all citations, and learn from your
 changes so that it works better in the future.
 
+**Want each project on GitHub, kept in step between computers?** The engine offers it at setup
+and hands over to
+[github-ai-project-manager](https://github.com/mercer-science/github-ai-project-manager),
+which works with or without the engine.
+
 **It is modular.** The engine is a collection of claude skills (creating agents) and python
 scripts. You can use any stages of the engine at any point, and it will automatically know
 which agents to call (ex: "Please use the citations checker to confirm my paragraph's citations")

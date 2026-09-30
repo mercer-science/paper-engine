@@ -32,34 +32,16 @@ resolve project paths regardless of the working directory. Without it `here()`
 walks up to some ancestor — OneDrive's root, at worst — and every path silently
 points somewhere wrong.
 
-## GitHub sync — automatic
+## GitHub — optional, and not the engine's job
 
-When this folder is its own git repository with a GitHub remote,
-`.claude/hooks/sync.sh` keeps it in step, run by the hooks in
-`.claude/settings.local.json`:
-
-- **session opens** (`startup`, `resume`): commit anything the last session
-  left unsaved, rebase onto GitHub's copy, push.
-- **session ends** (`/exit`, `/clear`, logout): commit everything, push.
-
-**Large data stays off GitHub.** Raw cryo-EM formats (`.eer`, `.dm4`,
-`.mrcs`, `.st`, `.ali`) are ignored, and before every commit any new file of
-50 MB or more, or new folder of 500 MB or more, is added to `.gitignore`. It
-stays on the computer that made it, so an analysis that reads it runs there.
-The next session opens by listing what was kept off: **ask the user whether
-that is right**, and for anything they want on GitHub delete its line from
-`.gitignore`.
-
-A folder with no repository yet: `python <tools>/scaffold.py github .`
-proposes a repository name. **Confirm it with the user**, then re-run with
-`--repo <name>` to create the private repository and turn all of this on.
-
-Closing the terminal window can kill the end-of-session save; the next open
-catches it up. Anything the script prints appears at the top of the session
-as a line starting `Project sync:`. **Tell the user about it before starting
-work.** "Both changed the same file" means the rebase was aborted and nothing
-was lost: fetch, show the user both versions of each conflicting file, and
-let them choose. Never force-push and never discard either side.
+The paper engine does not put this project on GitHub and does not sync it.
+[github-ai-project-manager](https://github.com/mercer-science/github-ai-project-manager)
+does, with or without the engine. When the user asks to put this project on
+GitHub or keep it in step between computers, run
+`python <tools>/scaffold.py github-offer . --json`: it says whether the
+manager is installed and gives the command that hands over to it. **What is
+kept off GitHub is always the user's answer to the manager's question**,
+never a rule of the engine's.
 
 ## Rendering floats
 
