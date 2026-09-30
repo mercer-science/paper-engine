@@ -2,7 +2,7 @@
   "$schema": "https://code.claude.com/schemas/plugin.json",
   "name": "paper-engine",
   "displayName": "Academic Research Paper Engine",
-  "version": "2026.9.28",
+  "version": "2026.9.30",
   "description": "Scaffold, draft, check and assemble a scientific paper: eight skills over eighteen standalone Python engines and an R float pipeline.",
   "author": {
     "name": "Russell Mercer",
