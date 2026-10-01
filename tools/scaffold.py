@@ -4859,12 +4859,15 @@ def _plugin_roots() -> list[str]:
     """Where Claude Code and Codex keep plugin installs. `$PAPER_ENGINE_
     PLUGINS_DIR` moves the first, as it does in labpack.py, and
     `$PAPER_ENGINE_CODEX_PLUGINS_DIR` the second, so a test never reads the
-    member's own."""
+    member's own. `$CODEX_HOME` is Codex's own home variable. The same ladder
+    as `labpack.plugin_roots()`, and tests/labpack.py holds the two equal."""
     home = os.path.expanduser("~")
     claude = os.environ.get("PAPER_ENGINE_PLUGINS_DIR") or os.path.join(
         home, ".claude", "plugins")
-    codex = os.environ.get("PAPER_ENGINE_CODEX_PLUGINS_DIR") or os.path.join(
-        home, ".codex", "plugins")
+    codex = os.environ.get("PAPER_ENGINE_CODEX_PLUGINS_DIR") or (
+        os.path.join(os.environ["CODEX_HOME"], "plugins")
+        if os.environ.get("CODEX_HOME")
+        else os.path.join(home, ".codex", "plugins"))
     return [os.path.abspath(os.path.expanduser(claude)),
             os.path.abspath(os.path.expanduser(codex))]
 

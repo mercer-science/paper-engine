@@ -685,6 +685,12 @@ the agent's prompt, and use `subagent_type: "general-purpose"`.
 > run still reports that a sub-agent ran. The engine names it as forbidden in
 > the brief's `spawn.never` field for exactly this reason.
 
+**In a harness with a different spawn tool**, follow the brief's `spawn` field,
+which names each harness's tool and parameters. Where the tool takes a setting
+for how much of this conversation the child inherits, **set it to none, by
+name. Never rely on its default.** In at least one harness the default is the
+whole conversation, which is a fork under another name.
+
 Do not summarise the project for the agent, do not add "helpful context", and
 do not answer its questions about anything on the denied list — a summary of a
 denied file is the denied file. If it comes back saying it reasoned from

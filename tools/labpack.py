@@ -147,6 +147,8 @@ def plugins_dir() -> str:
     See specs/probes/labpack-2026-09-17/. `cache/<marketplace>/<plugin>/
     <version>/` holds the installs, `marketplaces/<marketplace>/` holds the
     git clone each one came from, and `installed_plugins.json` indexes both.
+
+    Claude Code's root only. `plugin_roots()` is every root, Codex's included.
     """
     env = os.environ.get("PAPER_ENGINE_PLUGINS_DIR")
     if env:
@@ -154,22 +156,112 @@ def plugins_dir() -> str:
     return os.path.join(os.path.expanduser("~"), ".claude", "plugins")
 
 
+def codex_plugins_dir() -> str:
+    """Codex's plugin root, measured on Codex 0.159.3 (2026-10-01).
+
+    The install cache has the same `cache/<marketplace>/<plugin>/<version>/`
+    layout as Claude Code's, but the other two records live one level up, in
+    the Codex home: the marketplace's git snapshot is
+    `.tmp/marketplaces/<marketplace>/` and the marketplace and install records
+    are tables in `config.toml`. There is no `installed_plugins.json`.
+
+    `$PAPER_ENGINE_CODEX_PLUGINS_DIR` moves it, as in scaffold.py, so a test
+    never reads the member's own. `$CODEX_HOME` is Codex's own variable for
+    its home, and a member who set it keeps their plugins there.
+    """
+    env = os.environ.get("PAPER_ENGINE_CODEX_PLUGINS_DIR")
+    if env:
+        return os.path.abspath(os.path.expanduser(env))
+    home = os.environ.get("CODEX_HOME")
+    if home:
+        return os.path.join(os.path.abspath(os.path.expanduser(home)),
+                            "plugins")
+    return os.path.join(os.path.expanduser("~"), ".codex", "plugins")
+
+
+def plugin_roots() -> list[dict]:
+    """Every CLI's plugin root, Claude Code's first.
+
+    The order is the rule when one pack is installed in both: Claude Code's
+    copy is the one that is read (`installed_packs`).
+    """
+    return [{"host": "claude", "path": plugins_dir()},
+            {"host": "codex", "path": codex_plugins_dir()}]
+
+
+def _within(root: str, path: str) -> bool:
+    try:
+        root = os.path.abspath(root)
+        return os.path.commonpath([root, os.path.abspath(path)]) == root
+    except (ValueError, OSError):
+        # commonpath raises across drives on Windows, which is a clean "no".
+        return False
+
+
+def host_of(path: str) -> str:
+    """`claude` or `codex` if this path is inside that CLI's install cache,
+    else the empty string."""
+    for root in plugin_roots():
+        if _within(os.path.join(root["path"], "cache"), path):
+            return root["host"]
+    return ""
+
+
 def inside_plugin_install(path: str) -> bool:
-    """Is this path inside an installed plugin - i.e. will `/plugin update`
-    replace it?
+    """Is this path inside an installed plugin - i.e. will an update replace
+    it?
 
     Path containment rather than `$CLAUDE_PLUGIN_ROOT`, and that is the whole
     point: a member running `python tools/idea.py` from a terminal inside a
     plugin install has no such variable set, and they are exactly the person
-    about to lose a file.
+    about to lose a file. Both caches count. Measured on Codex 0.159.3:
+    `codex plugin marketplace upgrade` replaces the version directory and
+    deletes the old one, so a file saved inside a Codex install is lost the
+    same way.
     """
+    return bool(host_of(path))
+
+
+def update_command(path: str) -> str:
+    """The command that updates the install at `path`, for the line that says
+    one is due. Naming Claude Code's command to a Codex member sends them to
+    type something their CLI does not have."""
+    if host_of(path) == "codex":
+        return "`codex plugin marketplace upgrade`"
+    return "`/plugin update`"
+
+
+def no_bump_caveat(path: str) -> str:
+    """What to make of an update that reports nothing to do.
+
+    Claude Code's `/plugin update` compares versions, so a commit with no
+    version bump leaves it nothing to do and the copy is fine. Codex's
+    `marketplace upgrade` was measured (0.159.3) to apply such a commit
+    anyway, so there the sentence would be false and is left out.
+    """
+    if host_of(path) == "codex":
+        return ""
+    return (" If that reports nothing to do, the change did not carry a "
+            "version bump and this copy is fine.")
+
+
+def codex_config() -> dict:
+    """Codex's `config.toml`, beside its plugin root, or {}.
+
+    Its `[marketplaces.<name>]` tables say where each marketplace came from
+    (`source_type`, `source`) and its `[plugins."<plugin>@<marketplace>"]`
+    tables say what is enabled. Measured on Codex 0.159.3. Python 3.11 is the
+    first with `tomllib`. Without it, this reads as no records, and the
+    freshness line says UNKNOWN rather than guessing.
+    """
+    path = os.path.join(os.path.dirname(codex_plugins_dir()), "config.toml")
     try:
-        cache = os.path.abspath(os.path.join(plugins_dir(), "cache"))
-        target = os.path.abspath(path)
-        return os.path.commonpath([cache, target]) == cache
-    except (ValueError, OSError):
-        # commonpath raises across drives on Windows, which is a clean "no".
-        return False
+        import tomllib
+        with open(path, "rb") as fh:
+            data = tomllib.load(fh)
+    except Exception:
+        return {}
+    return data if isinstance(data, dict) else {}
 
 
 # ---------------------------------------------------------------------------
@@ -372,7 +464,7 @@ def print_adopt(res: dict) -> None:
     for path in res["from"]:
         print(f"from {path}")
         print("  this folder is inside a plugin install, so the next "
-              "`/plugin update` replaces it")
+              f"{update_command(path)} replaces it")
     print(f"to   {res['to']}")
     for rel in res["moved"]:
         print(f"  {verb} {rel}")
@@ -894,7 +986,8 @@ def print_roots(roots: list[dict]) -> None:
         if r["at_risk"]:
             print("       AT RISK: this folder is inside a plugin install, "
                   "so the next")
-            print("       `/plugin update` DELETES these files:")
+            print(f"       {update_command(r['path'])} DELETES these "
+                  "files:")
             for rel in r["at_risk_files"]:
                 print(f"         {rel}")
             print("       Run `labpack.py config --resources --adopt` to "
@@ -1058,10 +1151,33 @@ def installed_packs() -> list[str]:
 
     A directory scan is the fallback when the index is missing or malformed,
     because an index that cannot be parsed is not a reason to tell a member
-    they have no pack.
+    they have no pack. Codex keeps no such index, so its root is always
+    scanned.
+
+    **One pack installed in both CLIs is one pack**, not two. Two copies of
+    the same lab's pack do not raise the question rung 3 stops to ask
+    (*which lab's SOPs?*), so a pack whose plugin name is already found in an
+    earlier root is dropped, and the earlier root is Claude Code's. Two
+    DIFFERENT packs still stop and ask, whichever CLI each is in.
     """
     found: list[str] = []
-    index = read_json(os.path.join(plugins_dir(), "installed_plugins.json"))
+    earlier: set = set()
+    for root in plugin_roots():
+        here: set = set()
+        for path in _packs_under(root["path"]):
+            name = str(read_json(os.path.join(
+                path, ".claude-plugin", "plugin.json")).get("name") or path)
+            if name not in earlier:
+                found.append(path)
+                here.add(name)
+        earlier |= here
+    return found
+
+
+def _packs_under(root: str) -> list[str]:
+    """The pack installs under one plugin root, sorted."""
+    found: list[str] = []
+    index = read_json(os.path.join(root, "installed_plugins.json"))
     plugins = index.get("plugins")
     if isinstance(plugins, dict):
         for records in plugins.values():
@@ -1077,7 +1193,7 @@ def installed_packs() -> list[str]:
                     found.append(path)
     if found:
         return sorted(found)
-    cache = os.path.join(plugins_dir(), "cache")
+    cache = os.path.join(root, "cache")
     if not os.path.isdir(cache):
         return []
     for market in sorted(os.listdir(cache)):
@@ -1221,14 +1337,22 @@ def marketplace_clone(pack_path: str) -> str:
     disk. An installed pack's path is `cache/<marketplace>/<plugin>/<version>`,
     which is where the marketplace name comes from when the index does not
     give it.
+
+    Codex keeps the same kind of checkout at
+    `<codex home>/.tmp/marketplaces/<marketplace>/` - measured on 0.159.3,
+    and named as a constant in its source (`INSTALLED_MARKETPLACES_DIR`).
     """
-    known = read_json(os.path.join(plugins_dir(), "known_marketplaces.json"))
     parts = os.path.abspath(pack_path).replace("\\", "/").split("/")
     market = ""
     if "cache" in parts:
         i = parts.index("cache")
         if i + 1 < len(parts):
             market = parts[i + 1]
+    if market and host_of(pack_path) == "codex":
+        snap = os.path.join(os.path.dirname(codex_plugins_dir()), ".tmp",
+                            "marketplaces", market)
+        return snap if os.path.isdir(snap) else ""
+    known = read_json(os.path.join(plugins_dir(), "known_marketplaces.json"))
     if market:
         entry = known.get(market)
         if isinstance(entry, dict) and entry.get("installLocation"):
@@ -1312,8 +1436,7 @@ def freshness(pack: dict | None = None) -> dict:
     out["installed_sha"] = rem.installed_sha(pack["path"])
     if not out["installed_sha"]:
         out["state"] = "unknown"
-        out["line"] = unknown % ("the plugin index does not record which "
-                                 "commit this copy was cut from")
+        out["line"] = unknown % (rem.no_sha_reason(pack["path"]))
         return out
 
     seen = rem.cached(out["repo"])
@@ -1347,10 +1470,9 @@ def freshness(pack: dict | None = None) -> dict:
         out["line"] = (
             f"{name} pack, {age} - the repository has moved since this copy "
             f"was installed ({out['installed_sha'][:7]} installed, "
-            f"{seen['sha'][:7]} on GitHub as of {when}); `/plugin update` "
-            f"when convenient. If that reports nothing to do, the change did "
-            f"not carry a version bump and this copy is fine. Nothing here "
-            f"is blocked.")
+            f"{seen['sha'][:7]} on GitHub as of {when}); "
+            f"{update_command(pack['path'])} when convenient."
+            f"{no_bump_caveat(pack['path'])} Nothing here is blocked.")
         return out
     out["state"] = "current"
     out["line"] = (f"{name} pack {out['installed']}, {age} (current as of "

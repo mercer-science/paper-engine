@@ -622,6 +622,30 @@ def test_context_isolation_fallback() -> None:
     check("AGENTS.md explains why the isolation matters",
           "silently" in agents or "nothing visibly fails" in agents, True)
 
+    # A second harness's spawn tool can default to inheriting everything:
+    # measured on Codex 0.159.3, `spawn_agent` with `fork_turns` left out gave
+    # the child a hypothesis planted in the parent's conversation, and
+    # `"none"` did not (specs/codex-plugin-2026-09-30.md 2). So a skill that
+    # says how to spawn in one harness and nothing about the others reads,
+    # in the others, as permission to spawn with the default: a fork under
+    # another name, reported as an isolated run. The harness-specific half
+    # is the engine's (`agent-brief`'s `spawn` field), because a skill may
+    # not name a product (test_skills_are_harness_neutral); what the skill
+    # has to carry is the rule, and the pointer to the field.
+    for path in SKILL_TEXTS:
+        name = os.path.relpath(path, SKILLS_DIR).replace(os.sep, "/")
+        text = visiting("codex-spawn", path)
+        if not re.search(r"\*\*Agent\*\* tool|\bAgent tool\b|subagent_type",
+                         text):
+            continue
+        check(f"{name} names one harness's spawn and gives the rule for "
+              "the others",
+              "the brief's `spawn` field" in text
+              and bool(re.search(r"never rely on (its|the) default", text,
+                                 re.IGNORECASE)),
+              True, "the rule for every other harness belongs beside the "
+                    "one harness's instruction")
+
 
 def test_plugin_manifest_matches_the_tree() -> None:
     section("The plugin manifest ships exactly the skills that exist")
@@ -1492,8 +1516,8 @@ def test_skill_reference_files_are_covered() -> None:
     check("there are reference files to cover", bool(SKILL_REFERENCES), True,
           "writing-engine's spine plus one file per stage")
     check("...and the greps above all ran", sorted(VISITED),
-          ["documentation", "harness-specific", "plugin-token",
-           "reporting-removed", "tools-placeholder"],
+          ["codex-spawn", "documentation", "harness-specific",
+           "plugin-token", "reporting-removed", "tools-placeholder"],
           "this test reads what the other tests recorded, so it has to run "
           "after them")
 

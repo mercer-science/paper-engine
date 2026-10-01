@@ -363,6 +363,88 @@ def _find_package(mod: str) -> str:
     return getattr(spec, "origin", "") or "" if spec is not None else ""
 
 
+def _labpack():
+    """The pack engine, for its one definition of where each CLI keeps its
+    plugins. None on a copy without it, and the Codex section says unknown."""
+    try:
+        spec = importlib.util.spec_from_file_location(
+            "labpack_for_install", os.path.join(ROOT, "tools", "labpack.py"))
+        if spec is None or spec.loader is None:
+            return None
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+    except Exception:
+        return None
+
+
+def codex_check() -> dict:
+    """Is this toolkit installed in Codex, and does Codex see every skill?
+
+    Optional in the way R is: nothing here changes `ready` or the exit code,
+    because a member who works only in Claude Code has nothing to fix. What
+    it checks is the failure Codex would not report itself. Its manifest
+    reader drops a `skills` entry that does not start with `./` (the source
+    says *"path must start with `./`"*), and a skill that is dropped is one
+    that is never offered, which nobody sees.
+
+    Measured on Codex 0.159.3: the install is a whole copy of the repository
+    under `cache/<marketplace>/<plugin>/<version>/`, and `config.toml` holds
+    `[plugins."<plugin>@<marketplace>"] enabled = true`.
+    """
+    manifest = {}
+    try:
+        with open(os.path.join(ROOT, ".claude-plugin", "plugin.json"),
+                  encoding="utf-8") as fh:
+            manifest = json.load(fh)
+    except (OSError, ValueError):
+        pass
+    name = str(manifest.get("name") or "paper-engine")
+    out: dict = {"cli": shutil.which("codex") or "", "plugin": name,
+                 "installs": [], "install": "", "version": "",
+                 "enabled": None, "skills_listed": [], "skills_missing": [],
+                 "state": "unknown", "note": ""}
+    lp = _labpack()
+    if lp is None:
+        out["note"] = "labpack.py could not be loaded"
+        return out
+    try:
+        root = lp.codex_plugins_dir()
+        hits = sorted(glob.glob(os.path.join(root, "cache", "*", name, "*",
+                                             ".claude-plugin", "plugin.json")))
+        out["installs"] = [os.path.dirname(os.path.dirname(h)) for h in hits]
+        if not out["installs"]:
+            out["state"] = "not_installed"
+            return out
+        # One version directory is the measured case - an upgrade deletes the
+        # old one - so more than one is reported rather than chosen between.
+        install = out["installs"][-1]
+        out["install"] = install
+        im = lp.read_json(os.path.join(install, ".claude-plugin",
+                                       "plugin.json"))
+        out["version"] = str(im.get("version") or "")
+        skills = im.get("skills")
+        skills = [skills] if isinstance(skills, str) else (skills or [])
+        for entry in skills:
+            entry = str(entry)
+            ok = (entry.startswith("./") and os.path.isfile(
+                os.path.join(install, entry[2:], "SKILL.md")))
+            (out["skills_listed"] if ok else out["skills_missing"]).append(
+                entry)
+        market = os.path.basename(os.path.dirname(os.path.dirname(install)))
+        table = (lp.codex_config().get("plugins") or {}).get(
+            "%s@%s" % (name, market))
+        if isinstance(table, dict) and "enabled" in table:
+            out["enabled"] = bool(table["enabled"])
+        out["state"] = ("ok" if not out["skills_missing"]
+                        and out["enabled"] is not False
+                        and len(out["installs"]) == 1 else "problem")
+    except Exception as exc:                            # pragma: no cover
+        out["state"] = "unknown"
+        out["note"] = str(exc)[:200]
+    return out
+
+
 def doctor(dest: str = DEFAULT_DEST) -> dict:
     """Is this machine set up to run the toolkit, and what is each gap for?
 
@@ -434,10 +516,41 @@ def doctor(dest: str = DEFAULT_DEST) -> dict:
         res["errors"].append("could not read the installed skills: %s"
                              % str(exc)[:120])
 
+    res["codex"] = codex_check()
+
     res["ready"] = (not res["missing_required"] and not res["errors"]
                     and not res["skills"].get("missing")
                     and not res["skills"].get("stale"))
     return res
+
+
+def print_codex(cx: dict) -> None:
+    """The Codex rows. Optional, and said so on the line, as R's is."""
+    print()
+    state = cx.get("state", "unknown")
+    if state == "not_installed":
+        print("  -        Codex            optional. %s"
+              % ("the codex CLI is here and this toolkit is not installed in "
+                 "it - the README's Codex section has the two commands"
+                 if cx.get("cli") else "not installed"))
+        return
+    if state == "unknown":
+        print("  unknown  Codex            - %s" % (cx.get("note") or "?"))
+        return
+    print("  %s  Codex plugin     %s %s in %s"
+          % ("ok     " if state == "ok" else "PROBLEM",
+             cx.get("plugin", ""), cx.get("version", ""), cx.get("install")))
+    if len(cx.get("installs") or []) > 1:
+        print("      more than one version is installed: %s"
+              % ", ".join(cx["installs"]))
+    if cx.get("enabled") is False:
+        print("      disabled in Codex's config.toml - its skills are not "
+              "offered")
+    print("      skills Codex will list: %d" % len(cx.get("skills_listed")
+                                                   or []))
+    if cx.get("skills_missing"):
+        print("      NOT listed (Codex drops these silently): %s"
+              % ", ".join(cx["skills_missing"]))
 
 
 def print_doctor(res: dict) -> None:
@@ -473,6 +586,8 @@ def print_doctor(res: dict) -> None:
             # Named rather than run. A skill pointer is a file in the
             # member's own directory and this command does not write there.
             print("      fix with:  python tools/install_skills.py install")
+
+    print_codex(res.get("codex") or {})
 
     for err in res["errors"]:
         print("  ERROR    %s" % err)

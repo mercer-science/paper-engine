@@ -2335,6 +2335,7 @@ def test_defect_list_survives_a_plugin_update(tmp: str) -> None:
     # running `python tools/manuscript.py` from a terminal would.
     base = tempfile.mkdtemp(prefix="ms_cache_", dir=tmp)
     plugins = os.path.join(base, "plugins")
+    codex = os.path.join(base, "codex", "plugins")
     home = os.path.join(base, "home")
 
     def install(where: str) -> str:
@@ -2349,6 +2350,7 @@ def test_defect_list_survives_a_plugin_update(tmp: str) -> None:
            if k not in ("SYSTEM_CHANGES_MD", "CLAUDE_PLUGIN_ROOT",
                         "PAPER_ENGINE_TOOLKIT")}
     env.update(PAPER_ENGINE_PLUGINS_DIR=plugins, PAPER_ENGINE_HOME=home,
+               PAPER_ENGINE_CODEX_PLUGINS_DIR=codex,
                PYTHONIOENCODING="utf-8")
 
     def log(engine: str, code: str) -> "subprocess.CompletedProcess[str]":
@@ -2384,6 +2386,18 @@ def test_defect_list_survives_a_plugin_update(tmp: str) -> None:
     check("a source clone still writes at the engine root",
           os.path.isfile(os.path.join(clone, "system-changes.md"))
           and not os.path.exists(os.path.join(home2, "system-changes.md")),
+          True, r.stdout + r.stderr)
+
+    # The Codex half of 8.2. Measured on Codex 0.159.3: `marketplace
+    # upgrade` deletes the old version directory, so a list left in it is
+    # gone rather than merely stranded.
+    home3 = os.path.join(base, "home3")
+    env["PAPER_ENGINE_HOME"] = home3
+    cx = os.path.join(codex, "cache", "mkt", "paper-engine", "2026.9.1")
+    r = log(install(cx), "seen_in_codex")
+    check("inside a Codex install, log-issue writes under ~/.paper-engine too",
+          os.path.isfile(os.path.join(home3, "system-changes.md"))
+          and not os.path.exists(os.path.join(cx, "system-changes.md")),
           True, r.stdout + r.stderr)
 
 
@@ -6124,6 +6138,28 @@ def test_agent_brief(tmp: str) -> None:
     check("fork is refused by name", "fork" in res["spawn"]["never"], True)
     check("...and a real type is offered instead",
           res["spawn"]["subagent_type"], "general-purpose")
+
+    # (4b) The same rule in Codex, whose `spawn_agent` defaults the other
+    # way. Measured on 0.159.3 with a hypothesis planted in the parent: v2's
+    # `fork_turns` left out gave the child the hypothesis, `"none"` did not;
+    # v1's `fork_context` is off unless set (specs/codex-plugin-2026-09-30.md
+    # 2). So the brief names the isolating value of both, never the default.
+    cx = res["spawn"].get("codex") or {}
+    check("the brief carries a Codex spawn", cx.get("tool"), "spawn_agent", cx)
+    check("...isolating by name, for both versions of the tool",
+          cx.get("isolate"), {"fork_turns": "none", "fork_context": False}, cx)
+    check("...and says the default is the thing to avoid",
+          "never omit" in cx.get("rule", "").lower()
+          and '"all"' in cx.get("rule", ""), True, cx.get("rule"))
+    bad = [(n, ms.codex_task_name(n)) for n in ms.AGENT_MODULES
+           if not re.fullmatch(r"[a-z0-9_]+", ms.codex_task_name(n))]
+    check("every module's Codex task_name is one Codex accepts "
+          "(lowercase, digits, underscores)", bad, [])
+    check("...and stats-check's is not refused for its hyphen",
+          cx.get("task_name"), "stats_check")
+    check("one brief's isolate cannot be edited through another's",
+          ms.agent_brief(root, "abstract", "Langmuir")["spawn"]["codex"]
+          ["isolate"] is not cx.get("isolate"), True)
 
     # (5) Paths are absolute and use one separator. A brief that emits
     # `C:/x/y\\drafts\\source_text_r1` is one an agent can fail to open, and

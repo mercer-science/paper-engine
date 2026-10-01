@@ -135,6 +135,7 @@ class Sandbox:
     """
 
     KEYS = ("PAPER_ENGINE_HOME", "PAPER_ENGINE_PLUGINS_DIR",
+            "PAPER_ENGINE_CODEX_PLUGINS_DIR", "CODEX_HOME",
             "PAPER_ENGINE_TOOLKIT", "PAPER_ENGINE_LAB_PACK",
             "PAPER_ENGINE_RESOURCES", "CLAUDE_PLUGIN_ROOT")
 
@@ -142,6 +143,10 @@ class Sandbox:
         self.dir = tempfile.mkdtemp(prefix="pwa_labpack_")
         self.home = os.path.join(self.dir, "home")
         self.plugins = os.path.join(self.dir, "plugins")
+        # Codex's root sits inside a Codex home, because its other records
+        # (config.toml, .tmp/marketplaces/) are read from one level up.
+        self.codex_home = os.path.join(self.dir, "codex_home")
+        self.codex = os.path.join(self.codex_home, "plugins")
         self.toolkit = os.path.join(self.dir, "toolkit")
         os.makedirs(os.path.join(self.toolkit, "resources"), exist_ok=True)
         os.makedirs(self.plugins, exist_ok=True)
@@ -150,6 +155,7 @@ class Sandbox:
             os.environ.pop(k, None)
         os.environ["PAPER_ENGINE_HOME"] = self.home
         os.environ["PAPER_ENGINE_PLUGINS_DIR"] = self.plugins
+        os.environ["PAPER_ENGINE_CODEX_PLUGINS_DIR"] = self.codex
         os.environ["PAPER_ENGINE_TOOLKIT"] = self.toolkit
         # A new sandbox is a new run. Without this the in-memory inventory
         # cache carries one test's shelf into the next one's assertions.
@@ -225,6 +231,49 @@ class Sandbox:
               json.dumps({marketplace: {
                   "source": {"source": "github", "repo": f"x/{name}"},
                   "installLocation": clone}}, indent=2))
+        return path
+
+    def install_codex_pack(self, name: str = "jensen-resource-pack",
+                           marketplace: str = "", version: str = "2026.9.9",
+                           display: str = "Jensen Lab", sha: str = "",
+                           packed: bool = False,
+                           source: str = "") -> str:
+        """A pack installed the way Codex 0.159.3 was measured to install
+        one: a whole copy of the marketplace snapshot, `.git` included, in
+        the same cache layout; the marketplace in `config.toml`; the snapshot
+        under `.tmp/marketplaces/`. No `installed_plugins.json`."""
+        marketplace = marketplace or f"{name}-marketplace"
+        path = os.path.join(self.codex, "cache", marketplace, name, version)
+        manifest = {"name": name, "displayName": display, "version": version,
+                    "description": "a fixture pack", "labPack": True}
+        write(os.path.join(path, ".claude-plugin", "plugin.json"),
+              json.dumps(manifest, indent=2))
+        write(os.path.join(path, "lab.yml"),
+              f"pack: {name}\ndisplay_name: \"{display}\"\n"
+              "curated_on: \"2026-09-09\"\n")
+        if sha:
+            write(os.path.join(path, ".git", "HEAD"), "ref: refs/heads/main\n")
+            if packed:
+                write(os.path.join(path, ".git", "packed-refs"),
+                      "# pack-refs with: peeled fully-peeled sorted\n"
+                      f"{sha} refs/heads/main\n")
+            else:
+                write(os.path.join(path, ".git", "refs", "heads", "main"),
+                      sha + "\n")
+        snap = os.path.join(self.codex_home, ".tmp", "marketplaces",
+                            marketplace)
+        write(os.path.join(snap, ".claude-plugin", "plugin.json"),
+              json.dumps(manifest, indent=2))
+        url = source or f"https://github.com/x/{name}.git"
+        cfg = os.path.join(self.codex_home, "config.toml")
+        try:
+            text = read(cfg)
+        except OSError:
+            text = ""
+        text += (f"\n[marketplaces.{marketplace}]\nsource_type = \"git\"\n"
+                 f"source = \"{url}\"\n\n"
+                 f"[plugins.\"{name}@{marketplace}\"]\nenabled = true\n")
+        write(cfg, text)
         return path
 
     def remote_says(self, sha: str, repo: str = "x/jensen-resource-pack",
@@ -2464,6 +2513,170 @@ def test_notebook_no_pack_two_packs_check_list_cli() -> None:
         check("a refusal exits 2", rc == 2, out)
 
 
+
+# ---------------------------------------------------------------------------
+# Codex - specs/codex-plugin-2026-09-30.md 3 and 5. Every layout below was
+# measured on Codex 0.159.3 (2026-10-01), not read off its docs.
+# ---------------------------------------------------------------------------
+
+def test_codex_root_is_read() -> None:
+    section("Codex - a pack installed in Codex is found")
+
+    with Sandbox() as sb:
+        path = sb.install_codex_pack()
+        res = lp.find_pack()
+        check("a pack under the Codex root resolves at rung 3",
+              res["path"] == path and res["source"] == "plugin", res)
+        check("its version comes from its own manifest",
+              res["version"] == "2026.9.9", res)
+        check("Codex's cache is a plugin install",
+              lp.inside_plugin_install(os.path.join(path, "resources", "x.md")),
+              path)
+        check("...and it is named as Codex's", lp.host_of(path) == "codex",
+              lp.host_of(path))
+        check("a path beside the cache is not inside it",
+              not lp.inside_plugin_install(os.path.join(sb.codex, "x")),
+              sb.codex)
+        check("the update a Codex member is told to run is Codex's",
+              lp.update_command(path) == "`codex plugin marketplace upgrade`",
+              lp.update_command(path))
+        check("the marketplace snapshot is found where Codex keeps it",
+              lp.marketplace_clone(path) == os.path.join(
+                  sb.codex_home, ".tmp", "marketplaces",
+                  "jensen-resource-pack-marketplace"),
+              lp.marketplace_clone(path))
+
+
+def test_codex_and_claude_both() -> None:
+    section("Codex - one pack in both CLIs is one pack; two packs still ask")
+
+    with Sandbox() as sb:
+        claude = sb.install_pack()
+        sb.install_codex_pack()
+        res = lp.find_pack()
+        check("the same pack in both roots is not ambiguous",
+              res["source"] == "plugin", res)
+        check("...and Claude Code's copy is the one read", res["path"] == claude,
+              res["path"])
+
+    with Sandbox() as sb:
+        a = sb.install_pack()
+        b = sb.install_codex_pack(name="bell-resource-pack", display="Bell Lab")
+        res = lp.find_pack()
+        check("two DIFFERENT packs, one per CLI, stop and ask",
+              res["source"] == "ambiguous"
+              and sorted(res["ambiguous"]) == sorted([a, b]), res)
+
+
+def test_codex_roots_ladder() -> None:
+    section("Codex - where its root is, and scaffold.py agrees")
+
+    keep = {k: os.environ.get(k) for k in
+            ("PAPER_ENGINE_PLUGINS_DIR", "PAPER_ENGINE_CODEX_PLUGINS_DIR",
+             "CODEX_HOME")}
+    try:
+        for k in keep:
+            os.environ.pop(k, None)
+        home = os.path.expanduser("~")
+        check("the default is ~/.codex/plugins",
+              lp.codex_plugins_dir() == os.path.join(home, ".codex", "plugins"),
+              lp.codex_plugins_dir())
+        os.environ["CODEX_HOME"] = os.path.join(home, "elsewhere")
+        check("$CODEX_HOME moves it, as it moves Codex",
+              lp.codex_plugins_dir() == os.path.join(home, "elsewhere",
+                                                     "plugins"),
+              lp.codex_plugins_dir())
+        os.environ["PAPER_ENGINE_CODEX_PLUGINS_DIR"] = os.path.join(home, "t")
+        check("$PAPER_ENGINE_CODEX_PLUGINS_DIR beats it, so a test never "
+              "reads the member's own",
+              lp.codex_plugins_dir() == os.path.join(home, "t"),
+              lp.codex_plugins_dir())
+        # Two ladders that must agree, so they are compared, in all three
+        # states above.
+        for state in ("override", "codex_home", "default"):
+            if state == "codex_home":
+                os.environ.pop("PAPER_ENGINE_CODEX_PLUGINS_DIR", None)
+            if state == "default":
+                os.environ.pop("CODEX_HOME", None)
+            check(f"scaffold.py and labpack.py name the same roots ({state})",
+                  [os.path.abspath(r) for r in sc._plugin_roots()]
+                  == [r["path"] for r in lp.plugin_roots()],
+                  (sc._plugin_roots(), lp.plugin_roots()))
+        check("Claude Code's root comes first",
+              [r["host"] for r in lp.plugin_roots()] == ["claude", "codex"],
+              lp.plugin_roots())
+    finally:
+        for k, v in keep.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+
+
+def test_codex_freshness() -> None:
+    section("Codex - freshness reads Codex's own records")
+
+    rem = _load("remote_for_codex", os.path.join(TOOLS, "remote.py"))
+    HERE = "73e53311cb26d523da3b285d11ea468e4088f0c3"
+    MOVED = "9a94d9b5d4070d8f8a4dc62f22872424e1575e5c"
+
+    with Sandbox() as sb:
+        path = sb.install_codex_pack(sha=HERE)
+        check("the repository comes from config.toml's marketplace table",
+              rem.repo_for_path(path) == "x/jensen-resource-pack",
+              rem.repo_for_path(path))
+        check("...and is asked about by `remote.py check`",
+              "x/jensen-resource-pack" in rem.installed_repos(),
+              rem.installed_repos())
+        check("the installed commit is the copy's own .git HEAD",
+              rem.installed_sha(path) == HERE, rem.installed_sha(path))
+
+        sb.remote_says(sha=MOVED)
+        fresh = lp.freshness()
+        check("a moved repository is update_available",
+              fresh["state"] == "update_available", fresh)
+        check("...and the line names Codex's command, not Claude Code's",
+              "codex plugin marketplace upgrade" in fresh["line"]
+              and "/plugin update" not in fresh["line"], fresh["line"])
+        # Measured: `marketplace upgrade` applied a commit with no version
+        # bump. "it may have nothing to do" would be false in Codex.
+        check("...and drops the no-version-bump caveat, which is false there",
+              "version bump" not in fresh["line"], fresh["line"])
+
+        sb.remote_says(sha=HERE)
+        check("the same commit is current",
+              lp.freshness()["state"] == "current", lp.freshness())
+
+    with Sandbox() as sb:
+        path = sb.install_codex_pack(sha=HERE, packed=True)
+        check("a HEAD resolved through packed-refs is read too",
+              rem.installed_sha(path) == HERE, rem.installed_sha(path))
+
+    with Sandbox() as sb:
+        sb.install_codex_pack()
+        sb.remote_says(sha=MOVED)
+        fresh = lp.freshness()
+        check("a Codex copy with no .git is UNKNOWN, never current",
+              fresh["state"] == "unknown", fresh)
+        check("...and says why in Codex's terms",
+              "Codex install carries no .git" in fresh["line"], fresh["line"])
+
+    with Sandbox() as sb:
+        path = sb.install_codex_pack(
+            sha=HERE, source="https://gitlab.example.edu/x/pack.git")
+        check("a marketplace that is not on GitHub has no repository to ask",
+              rem.repo_for_path(path) == "", rem.repo_for_path(path))
+        check("...so freshness is UNKNOWN and says so",
+              lp.freshness()["state"] == "unknown", lp.freshness())
+
+    with Sandbox() as sb:
+        sb.install_pack(sha=HERE)
+        sb.remote_says(sha=MOVED)
+        line = lp.freshness()["line"]
+        check("Claude Code's line is unchanged: its command and its caveat",
+              "/plugin update" in line and "version bump" in line, line)
+
+
 def main() -> int:
     test_dropzone_ladder()
     test_dropzone_at_risk_by_name()
@@ -2517,6 +2730,10 @@ def main() -> int:
     test_notebook_refusals()
     test_notebook_carries_ticks_and_log()
     test_notebook_no_pack_two_packs_check_list_cli()
+    test_codex_root_is_read()
+    test_codex_and_claude_both()
+    test_codex_roots_ladder()
+    test_codex_freshness()
 
     print(f"\n{PASSED}/{PASSED + FAILED} passed"
           + (f", {FAILED} FAILED" if FAILED else ""))

@@ -8520,6 +8520,38 @@ IN_SESSION_MODULES = {
 FORBIDDEN_SUBAGENT_TYPES = ("fork",)
 DEFAULT_SUBAGENT_TYPE = "general-purpose"
 
+# The same rule in Codex, which has no Agent tool and no subagent_type. Its
+# `spawn_agent` comes in two versions, which one depends on the model, and
+# they DEFAULT IN OPPOSITE DIRECTIONS. Measured on Codex 0.159.3 against a
+# scripted model, with a hypothesis planted in the root conversation and the
+# child's request read back (specs/codex-plugin-2026-09-30.md 2):
+#
+#   v2  `fork_turns`    omitted -> the child sees it.  "none" -> it does not
+#   v1  `fork_context`  omitted -> it does not.        true   -> it does
+#
+# So the parameter is always named, never left to its default: an omitted
+# `fork_turns` is a fork under another name, and it reports that a sub-agent
+# ran.
+CODEX_SPAWN = {
+    "tool": "spawn_agent",
+    "message": "the `prompt` field below, verbatim",
+    "isolate": {"fork_turns": "none", "fork_context": False},
+    "rule": "In Codex, call spawn_agent with the prompt field as `message` "
+            "and set fork_turns to \"none\" - or, where the tool has "
+            "fork_context instead, fork_context to false. Never omit it: "
+            "fork_turns defaults to \"all\", which hands the child this "
+            "whole conversation. If spawn_agent is not in the tool list, "
+            "find it with tool_search; a version that asks for task_name "
+            "takes the brief's codex.task_name.",
+}
+
+
+def codex_task_name(module: str) -> str:
+    """A module's name as Codex accepts a `task_name`: lowercase letters,
+    digits and underscores only (`protocol/src/agent_path.rs`, 0.159.3), so
+    `stats-check` is refused and `stats_check` is not."""
+    return re.sub(r"[^a-z0-9]+", "_", module.lower()).strip("_") or "module"
+
 
 # The modules that WRITE prose about somebody else's work. On a review they
 # are handed the corpus, because a citekey is not evidence: it names a paper,
@@ -9547,6 +9579,9 @@ def agent_brief(project: str, module: str,
                          "context by definition, which is the one thing the "
                          "denied list exists to prevent - and it would do it "
                          "while reporting that a sub-agent ran",
+            "codex": dict(CODEX_SPAWN,
+                          isolate=dict(CODEX_SPAWN["isolate"]),
+                          task_name=codex_task_name(module)),
         },
         "fallback": "If this harness cannot spawn a sub-agent with a chosen "
                     "context, run this module as a separate invocation whose "
@@ -9958,6 +9993,7 @@ def agent_brief_list() -> dict:
             "agent_modules": [r["module"] for r in rows if r["runs_as_agent"]],
             "blind": blind,
             "never_subagent_type": list(FORBIDDEN_SUBAGENT_TYPES),
+            "codex": CODEX_SPAWN["rule"],
             "note": "The blind modules (%s) are the ones where breaking the "
                     "isolation does not fail visibly. If a harness cannot "
                     "give one of those its own context, skip it and say so."
@@ -9972,6 +10008,7 @@ def print_agent_brief_list(res: dict) -> None:
     print("  never spawn these with subagent_type=%s - it inherits "
           "the whole spawning context."
           % "/".join(res["never_subagent_type"]))
+    print("  %s" % res["codex"])
     print("  %s" % res["note"])
 
 
@@ -9991,6 +10028,8 @@ def print_agent_brief(res: dict) -> None:
           % res["spawn"]["subagent_type"])
     print("  NEVER subagent_type=%s - %s"
           % ("/".join(res["spawn"]["never"]), res["spawn"]["why_never"]))
+    if res["spawn"].get("codex"):
+        print("  %s" % res["spawn"]["codex"]["rule"])
     if res.get("sections_scope"):
         print("\n  scope   %s  (from %s)"
               % (", ".join(res["sections_scope"]), res["scope_source"]))

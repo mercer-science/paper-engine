@@ -342,8 +342,9 @@ def freshness(root: str = "") -> dict:
         # who git-cloned and waits for `/plugin update` waits forever.
         out["state"] = "not_installed"
         out["line"] = ("this copy is a clone rather than a plugin install, "
-                       "so `/plugin update` does not reach it - `git pull` "
-                       "does. Nothing here is blocked.")
+                       "so neither `/plugin update` nor `codex plugin "
+                       "marketplace upgrade` reaches it - `git pull` does. "
+                       "Nothing here is blocked.")
         return out
 
     out["clone"] = lp.marketplace_clone(root)
@@ -365,8 +366,7 @@ def freshness(root: str = "") -> dict:
 
     out["installed_sha"] = rem.installed_sha(root)
     if not out["installed_sha"]:
-        out["line"] = unknown % ("the plugin index does not record which "
-                                 "commit this copy was cut from")
+        out["line"] = unknown % rem.no_sha_reason(root)
         return out
 
     seen = rem.cached(out["repo"])
@@ -393,10 +393,10 @@ def freshness(root: str = "") -> dict:
         out["state"] = "update_available"
         out["line"] = (
             "the repository has moved since this toolkit was installed (%s "
-            "installed, %s on GitHub as of %s); `/plugin update` when "
-            "convenient. If that reports nothing to do, the change did not "
-            "carry a version bump and this copy is fine. Nothing here is "
-            "blocked." % (out["installed_sha"][:7], seen["sha"][:7], when))
+            "installed, %s on GitHub as of %s); %s when convenient.%s "
+            "Nothing here is blocked."
+            % (out["installed_sha"][:7], seen["sha"][:7], when,
+               lp.update_command(root), lp.no_bump_caveat(root)))
         return out
     out["state"] = "current"
     out["line"] = ("toolkit %s (current as of the check %s)."
@@ -409,7 +409,7 @@ def print_freshness(res: dict) -> None:
     if res.get("clone"):
         print("  compared against %s" % res["clone"])
     print("\nNo network call was made, and nothing here changes an exit "
-          "code. `/plugin update` is yours to run.")
+          "code. Updating is yours to run.")
 
 
 def bump(root: str, dry_run: bool = False, version: str = "") -> dict:

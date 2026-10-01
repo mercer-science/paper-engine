@@ -28,7 +28,9 @@ which agents to call (ex: "Please use the citations checker to confirm my paragr
 **You do not have to learn any commands.** Start a session in any working directory.
 It will automatically call the correct skills based on your conversation.
 
-Designed using Claude Code, for Claude Code, but in theory it could work with Codex.
+Designed using Claude Code, for Claude Code. It also installs in Codex, from the
+same repository, with the commands under *Installing in Codex* below. That was
+measured on Codex 0.159.3; no paper has yet been written with it in Codex.
 It is meant to run on your own computer. A Claude Code cloud session can run the
 Python and R, but you cannot open the drafts in Word or the figures in PowerPoint
 there, and nothing is kept unless it is pushed to GitHub. Use the cloud for
@@ -107,6 +109,24 @@ Then start Claude Code and type these two commands into it:
 /plugin install paper-engine@paper-engine-marketplace
 ```
 
+### Installing in Codex
+
+Codex reads the same plugin files, so there is nothing separate to download.
+In a terminal (not inside a Codex session), run:
+
+```bash
+codex plugin marketplace add mercer-science/paper-engine
+codex plugin add paper-engine@paper-engine-marketplace
+```
+
+Start a new Codex session afterwards and the eight skills are listed as
+`paper-engine:<name>`. One difference matters. The modules that check a paper
+**blind** (the stats check, the abstract, the reader's comprehension check)
+need a sub-agent that cannot see your conversation. Codex's sub-agent tool
+inherits the whole conversation unless it is told not to, and the engine tells
+it not to every time. If a check ever reports that it could see your
+hypothesis, that is a fault: say so, and do not trust the report.
+
 
 ## Step 3 — Install Your Lab's Resource Pack (Optional)
 
@@ -120,6 +140,9 @@ For example, for the Jensen lab, two more commands inside Claude Code:
 /plugin marketplace add mercer-science/jensen-resource-pack
 /plugin install jensen-resource-pack@jensen-resource-pack-marketplace
 ```
+
+In Codex, the same pack is `codex plugin marketplace add mercer-science/jensen-resource-pack`
+then `codex plugin add jensen-resource-pack@jensen-resource-pack-marketplace`.
 
 In another lab, ask your PI which pack is yours and install that one instead —
 same two commands with a different name. Packs are **content only**: no code, no
@@ -152,6 +175,9 @@ When it tells you there is an update:
 
 - **Plugin:** run `/plugin update` — but read the caution about
   `/plugin uninstall` at the bottom of this page first.
+- **Codex plugin:** run `codex plugin marketplace upgrade` in a terminal. It
+  updates the marketplace and the installed copy together, and replaces the old
+  copy: a file you saved inside it goes with it, just as with `/plugin update`.
 - **Cloned:** the automatic check covers plugin installs; a clone updates with
   `git pull`, so pull now and then. An update is three commands, and the third
   is not optional:

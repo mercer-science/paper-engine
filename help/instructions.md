@@ -133,6 +133,15 @@ Then, inside Claude Code, two commands:
 
 **The repository is the marketplace**: there is no server and no token, and because the repository is public there is nothing to be granted.
 
+**In Codex** the same repository installs with two commands in a terminal, and Codex reads the plugin files Claude Code reads, so nothing is downloaded twice:
+
+```bash
+codex plugin marketplace add mercer-science/paper-engine
+codex plugin add paper-engine@paper-engine-marketplace
+```
+
+A new Codex session then lists the eight skills as `paper-engine:<name>`. `python tools/install_skills.py doctor` has a Codex row that says whether Codex will list every one. This was measured on Codex 0.159.3. No paper has been written in Codex yet, so treat it as the newer route.
+
 You never need to know where the plugin landed on disk. Each skill resolves its own engine paths, starting from the directory the harness hands it.
 
 ### 2.3 Route 2 — the clone
@@ -490,6 +499,8 @@ On a **review** the strict case is `attribution-check` instead, for exactly the 
 
 > [!IMPORTANT]
 > So if a blind module cannot be given its own context, the rule is **skip it and say so**. No report is better than a contaminated one.
+
+**In Codex this is a setting, not a given.** Codex's sub-agent tool hands the child the whole conversation unless it is told otherwise. That was measured with a hypothesis planted in the conversation: the child saw it when the setting was left out, and did not when it was set. So the engine's brief names the setting every time, and the skill says never to rely on the default.
 
 ### The presets, and what each costs
 
@@ -885,7 +896,7 @@ What the answers mean:
 | What you see | What it means |
 |---|---|
 | `current as of the check today` | Genuinely current, and it says when it last had grounds to believe that |
-| `the repository has moved since this copy was installed` | Run `/plugin update`. If that reports nothing to do, the change did not carry a version bump and your copy is fine |
+| `the repository has moved since this copy was installed` | Run the command the line names: `/plugin update` in Claude Code, where nothing-to-do means the change carried no version bump and your copy is fine; `codex plugin marketplace upgrade` in Codex, which applies the change either way |
 | `UNKNOWN (...)` | It will not guess. The reason is on the line — usually a login that has expired, or a week with no successful answer |
 
 **Why `UNKNOWN` matters more than it looks.** Until 2026-09-23 this check compared two copies on your own disk that came down in the same download, so it reported `current` whether or not it was. A check that says "I do not know" is worth more than one that says "you are fine" without grounds — silence and good news look identical, and that is exactly how eleven days of corrected instrument entries went unread on the maintainer's own machine.
