@@ -1546,6 +1546,57 @@ def test_resources_carries_the_pack():
         shutil.rmtree(root, ignore_errors=True)
 
 
+def test_dropped_dirs():
+    section("a folder the author dropped is never written back into")
+
+    root, lab = make_lab()
+    try:
+        proj = scaffold_project(lab, name="dropped")
+        res = sc.drop(proj, ["data/templates", "data/mock_data",
+                             "data/raw_images"])
+        check("scaffold.py drop records three folders",
+              not res["errors"] and len(sc.dropped_dirs(proj)) == 3, res)
+        # Two readers of one key. If they disagree, idea.py writes into a
+        # folder scaffold.py believes is gone.
+        check("idea.py reads dropped_dirs exactly as scaffold.py does",
+              idea.dropped_dirs(proj) == sc.dropped_dirs(proj),
+              f"{idea.dropped_dirs(proj)} vs {sc.dropped_dirs(proj)}")
+
+        res = idea.write(proj, bundle(), "project", dry_run=False)
+        skips = {a["path"]: a for a in res["actions"]
+                 if a.get("kind") == "skip" or a.get("action") == "skip"}
+        check("write() writes nothing into the dropped folders",
+              not os.path.isdir(os.path.join(proj, "data", "templates"))
+              and not os.path.isdir(os.path.join(proj, "data", "mock_data")),
+              os.listdir(os.path.join(proj, "data")))
+        check("and says so, naming the way back",
+              any("templates" in p and "drop --restore" in str(a)
+                  for p, a in skips.items())
+              and any("mock_data" in p and "drop --restore" in str(a)
+                      for p, a in skips.items()), list(skips))
+        check("no generator run is reported as a FAILED one",
+              "mock" not in res, res.get("mock"))
+        check("the rest of the idea is still written",
+              not res["errors"]
+              and os.path.isfile(os.path.join(proj, "plan", "README.md")),
+              res["errors"])
+
+        res = idea.mock_only(proj, MOCK_ONLY_BUNDLE)
+        check("`mock` refuses into a dropped folder and names the restore",
+              res["errors"] and "drop --restore data/mock_data"
+              in res["errors"][0]
+              and not os.path.isdir(os.path.join(proj, "data", "mock_data")),
+              res)
+
+        sc.drop(proj, ["data/mock_data"], restore=True)
+        res = idea.mock_only(proj, MOCK_ONLY_BUNDLE)
+        check("after --restore the same call writes and runs",
+              not res["errors"] and res.get("mock", {}).get("ran"),
+              res.get("errors"))
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
 def main():
     print("Idea-generation engine suite - specs/idea-generation.md")
 
@@ -1554,6 +1605,7 @@ def main():
     test_refusals()
     test_mock_only()
     test_mock_only_cli()
+    test_dropped_dirs()
 
     root = None
     try:

@@ -3562,6 +3562,138 @@ def test_legacy_sync_is_untouched():
         shutil.rmtree(root, ignore_errors=True)
 
 
+# ---------------------------------------------------------------------------
+# Folders the user removed on purpose (`drop`, project.yml dropped_dirs)
+# ---------------------------------------------------------------------------
+
+DROP_SET = ["data/templates", "data/raw", "data/raw_images",
+            "data/mock_data", "obsolete/analysis"]
+
+
+def test_dropped_dirs():
+    section("dropped_dirs - a folder removed on purpose stays removed")
+    root, proj, _ = new_project(field="chemistry")
+    try:
+        # The case that asked for this: the author deletes the empty data
+        # folders by hand, because this project does not have that shape.
+        for d in DROP_SET:
+            shutil.rmtree(os.path.join(proj, *d.split("/")))
+        before = sc.check(proj)
+        check("a hand-deleted folder still reads as missing until declared",
+              not before["scaffolded"]
+              and sorted(m.rstrip("/") for m in before["missing"])
+              == sorted(DROP_SET), before["missing"])
+        check("check names every missing one as droppable",
+              sorted(m.rstrip("/") for m in before["missing_droppable"])
+              == sorted(DROP_SET), before["missing_droppable"])
+        rep = sc.reorganize_report(proj)
+        row = [r for r in rep["rows"] if r["row"] == "Structure"][0]
+        check("report offers `drop` beside the re-scaffold, never only it",
+              "scaffold.py drop" in row["next"]
+              and all(d in row["next"] for d in DROP_SET), row["next"])
+
+        res = sc.drop(proj, DROP_SET)
+        check("drop records folders already gone from disk",
+              [a["action"] for a in res["actions"]] == ["recorded"] * 5
+              and not res["errors"], res["actions"])
+        check("project.yml carries the decision",
+              sc.dropped_dirs(proj) == DROP_SET, sc.dropped_dirs(proj))
+        check("the rest of project.yml still parses the same",
+              sc.read_project_yml(proj).get("field") == "chemistry"
+              and sc.read_project_yml(proj).get("expects_data")
+              == "measurements")
+
+        after = sc.check(proj)
+        check("check reports a project with dropped folders as scaffolded",
+              after["scaffolded"] and not after["missing"], after["missing"])
+        check("and names each dropped folder rather than omitting it",
+              sorted(d["dir"].rstrip("/") for d in after["dropped"])
+              == sorted(DROP_SET), after["dropped"])
+
+        again = sc.scaffold(proj, sc.build_values(project_name="demo_project"))
+        check("a re-scaffold does not put a dropped folder back",
+              not any(os.path.isdir(os.path.join(proj, *d.split("/")))
+                      for d in DROP_SET) and again["already_set_up"],
+              again["created"])
+        check("mock data is no longer offered once data/mock_data is dropped",
+              again["offers"]["mock_data"] is False
+              and again["offers"]["mock_floats"] is False, again["offers"])
+
+        # Nothing is ever proposed INTO a dropped folder - not even a CSV,
+        # whose home is otherwise a certainty.
+        with open(os.path.join(proj, "plate_reads.csv"), "w",
+                  encoding="utf-8") as fh:
+            fh.write("well,od600\nA1,0.4\n")
+        ad = sc.adopt(proj, sc.build_values(project_name="demo_project"),
+                      apply_moves=True)
+        csv_e = [e for e in ad["extras"] if e["path"] == "plate_reads.csv"]
+        check("adopt asks instead of moving into a dropped folder",
+              csv_e and csv_e[0]["action"] == "ask"
+              and "removed on purpose" in csv_e[0]["why"]
+              and os.path.isfile(os.path.join(proj, "plate_reads.csv"))
+              and not os.path.isdir(os.path.join(proj, "data", "raw")),
+              csv_e)
+
+        res = sc.drop(proj, ["data/raw"], restore=True)
+        check("--restore re-creates the folder and un-records it",
+              os.path.isfile(os.path.join(proj, "data", "raw", ".gitkeep"))
+              and "data/raw" not in sc.dropped_dirs(proj)
+              and sc.check(proj)["scaffolded"], res)
+        sc.drop(proj, [d for d in DROP_SET if d != "data/raw"], restore=True)
+        check("restoring the last one removes the key entirely",
+              "dropped_dirs" not in read(proj, "project.yml"),
+              read(proj, "project.yml")[-400:])
+
+        # Refusals. A folder holding work is never emptied by drop.
+        with open(os.path.join(proj, "data", "raw", "plate.csv"), "w",
+                  encoding="utf-8") as fh:
+            fh.write("x\n1\n")
+        res = sc.drop(proj, ["data/raw", "plan/outline.md", "data/mock_data"])
+        acts = {a["dir"]: a["action"] for a in res["actions"]}
+        check("drop refuses a folder with a file in it, and keeps the file",
+              acts.get("data/raw") == "refused"
+              and os.path.isfile(os.path.join(proj, "data", "raw",
+                                              "plate.csv")), res["actions"])
+        check("drop refuses anything that is not a scaffold empty folder",
+              acts.get("plan/outline.md") == "refused"
+              and os.path.isfile(os.path.join(proj, "plan", "outline.md")))
+        check("an empty one in the same call is still dropped",
+              acts.get("data/mock_data") == "dropped"
+              and not os.path.isdir(os.path.join(proj, "data", "mock_data"))
+              and sc.dropped_dirs(proj) == ["data/mock_data"])
+        out = subprocess.run([sys.executable, ENGINE, "drop", proj,
+                              "data/raw"], capture_output=True, text=True,
+                             encoding="utf-8", errors="replace")
+        check("a refusal is a non-zero exit, not a quiet 0",
+              out.returncode == 1 and "refused" in out.stdout, out.stdout)
+
+        # Back on disk because an engine wrote into it on request is not a
+        # contradiction worth a report, and it never makes the project
+        # INCOMPLETE.
+        os.makedirs(os.path.join(proj, "data", "mock_data"))
+        res = sc.check(proj)
+        check("a dropped folder that reappears is reported, not a defect",
+              res["scaffolded"]
+              and res["dropped"] == [{"dir": "data/mock_data/",
+                                      "exists": True}], res["dropped"])
+
+        # A typo drops nothing, and says so.
+        sc._write_dropped_dirs(proj, ["data/mock_data", "data/rwa"])
+        check("an unknown dropped_dirs entry is named",
+              sc.check(proj)["unknown_dropped"] == ["data/rwa"])
+
+        nofile = tempfile.mkdtemp(prefix="scaffold_test_")
+        try:
+            res = sc.drop(nofile, ["data/raw"])
+            check("drop with no project.yml refuses rather than inventing one",
+                  res["errors"] and not os.path.exists(
+                      os.path.join(nofile, "project.yml")), res)
+        finally:
+            shutil.rmtree(nofile, ignore_errors=True)
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
 def main():
     print("Scaffold and float-pipeline suite - specs/setup-project-directory.md")
 
@@ -3571,6 +3703,7 @@ def main():
     test_source_text_round_label()
     test_source_text_resolver_matches_manuscript_py()
     test_idempotence()
+    test_dropped_dirs()
     test_only_subtree()
     test_float_ops()
     test_mock_float_specs()

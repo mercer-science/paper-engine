@@ -431,6 +431,27 @@ def read_project_yml(root: str) -> dict:
     return out
 
 
+def dropped_dirs(root: str) -> list[str]:
+    """project.yml's `dropped_dirs:` - the scaffold folders the author removed
+    on purpose. `scaffold.py drop` is the only writer; this is a second
+    reader, and tests/idea.py pins it to scaffold.py's so the two cannot
+    disagree about what was dropped."""
+    raw = read_project_yml(root).get("dropped_dirs", "").strip()
+    if not (raw.startswith("[") and raw.endswith("]")):
+        return []
+    out: list[str] = []
+    for part in raw[1:-1].split(","):
+        d = part.strip().strip('"').strip("'").replace("\\", "/").strip("/")
+        if d and d not in out:
+            out.append(d)
+    return out
+
+
+def _dropped_note(rel_dir: str) -> str:
+    return ("%s/ was removed on purpose (project.yml dropped_dirs) - "
+            "`scaffold.py drop --restore %s` brings it back" % (rel_dir, rel_dir))
+
+
 def find_lab_folder(root: str) -> str:
     """The `<PI> - <Field>/` directory above the project, found by the folders
     that actually mark it: a Resources/ or Ideas/ sibling. Walking up for a
@@ -1941,10 +1962,18 @@ def write_project(root: str, bundle: dict, w: Writer) -> dict:
               ", ".join(df.get("file", "") for df in bundle["data_files"]))
 
     # --- data/templates/*.csv ------------------------------------------------
+    #
+    # A folder the author dropped is skipped, out loud. Writing into it would
+    # quietly undo the decision, and the next `scaffold.py check` would find
+    # it back on disk with no record of why.
+    dropped = set(dropped_dirs(root))
     made = []
     for df in bundle.get("data_files") or []:
         fname = df.get("file", "")
         rel = f"data/templates/{fname}"
+        if "data/templates" in dropped:
+            w.skip(rel, _dropped_note("data/templates"))
+            continue
         if os.path.exists(os.path.join(root, rel)):
             w.skip(rel, "already exists")
             continue
@@ -1960,7 +1989,9 @@ def write_project(root: str, bundle: dict, w: Writer) -> dict:
     if bundle.get("data_files"):
         rel = "data/mock_data/generate_mock_data.py"
         script, unspecified = render_mock_script(bundle)
-        if os.path.exists(os.path.join(root, rel)):
+        if "data/mock_data" in dropped:
+            w.skip(rel, _dropped_note("data/mock_data"))
+        elif os.path.exists(os.path.join(root, rel)):
             w.skip(rel, "already exists - edit it rather than regenerating")
         else:
             w.put(rel, script, "create",
@@ -2069,7 +2100,11 @@ def write(root: str, bundle: dict, mode: str, dry_run: bool,
     res["actions"] = w.actions
     res["report"] = report
     res["wrote"] = not dry_run
-    if not dry_run and mode == "project" and run_mock and bundle.get("data_files"):
+    # Not run into a dropped folder: there is no generator to run, and
+    # reporting its absence as a FAILED run is a wrong answer at exit 0.
+    if (not dry_run and mode == "project" and run_mock
+            and bundle.get("data_files")
+            and "data/mock_data" not in dropped_dirs(root)):
         res["mock"] = run_mock_generator(root)
     return res
 
@@ -2971,6 +3006,12 @@ def mock_only(root: str, bundle: dict, run: bool = True,
         out["errors"].append(
             "bundle has no data_files - nothing to generate. Give at least one "
             "table with its columns and their kinds.")
+        return out
+
+    if "data/mock_data" in dropped_dirs(root):
+        # Refused rather than written: this command's whole output lives in
+        # the folder the author removed. The way back is one command.
+        out["errors"].append(_dropped_note("data/mock_data"))
         return out
 
     script, unspecified = render_mock_script(bundle)

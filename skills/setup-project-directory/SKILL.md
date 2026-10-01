@@ -24,6 +24,7 @@ skill fails on it.
 python <tools>/scaffold.py scaffold "<path>" --json [--title ...] [--field ...] \
                                              [--journal ...] [--pi ...] [--dry-run]
 python <tools>/scaffold.py check "<path>" --json     # what is present / missing
+python <tools>/scaffold.py drop  "<path>" data/raw ... --json   # a folder the project does not need
 python <tools>/scaffold.py tree  "<path>"            # print the annotated tree
 python <tools>/scaffold.py github-offer "<path>" --json   # offer GitHub? see "GitHub"
 
@@ -243,6 +244,41 @@ re-running adds what the new answer needs and **never deletes what the old one
 made**, so a project that switches from `none` to `measurements` gains `data/`
 and a project that switches the other way keeps it. Say so; deleting is the
 user's call and this skill does not delete.
+
+### Folders the Project Does Not Need
+
+Every project gets the empty data folders (`data/raw/`, `data/raw_images/`,
+`data/mock_data/`, `data/templates/`) and the `obsolete/` bins, because a
+project that turns out to need one should not have to know it is missing.
+**Some projects do not have that shape, and the user may say so** — before
+scaffolding, or months later after deleting them by hand.
+
+When they do, record it with `drop`, never by deleting and moving on:
+
+```bash
+python <tools>/scaffold.py drop "<path>" data/raw data/raw_images data/mock_data --json
+```
+
+A hand-deleted folder reads exactly like one a sync lost, so `check` reports
+it missing and the re-scaffold `check` suggests would put it straight back.
+`drop` writes `dropped_dirs:` into `project.yml`. After that, the folder is not
+re-created, not reported missing and not offered mock data, and `adopt` never
+proposes moving anything into it. Every engine that writes into one of these
+folders creates it on demand, so nothing downstream breaks.
+
+- **It removes an empty folder and records one already gone.** A folder holding
+  any file is `refused` by name, with what it holds. Not needing the folder and
+  throwing away what is in it are two decisions, and only the first was asked.
+- **Only the scaffold's empty folders are droppable.** A template file is not.
+- **`--restore` is the way back**, one command: it re-creates the folder and
+  removes the record.
+- When `check` lists a missing folder under `missing_droppable`, ask once
+  whether it was removed on purpose. "Yes" means run `drop`. "No" means
+  re-scaffold.
+
+A figure script still pointing into a dropped folder fails at render with a
+message saying the folder does not exist in this project. The fix is to point
+the script at where the data lives, not to restore the folder.
 
 **`none` does not mean no figures.** Four figure slots and two table slots are
 still created. A theory paper's figures are drawn art, and

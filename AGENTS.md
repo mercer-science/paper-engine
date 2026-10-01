@@ -259,6 +259,7 @@ stops being the explanation.
 | my folder is a mess, files everywhere, I don't know where anything is, sort out / clean up / tidy this folder | `reorganize-directory` | it calls the same `adopt`; what it adds is `--depth`, `--sweep-unknown`, `float-order` and the end-of-run report |
 | check the paper engine is set up, is this installed properly, did the install work, what am I missing | `install_skills.py doctor` | modular; no skill needed. **This is README step 4 and it has one command** — do not improvise a set of shell probes. It reports the programs, the packages and the pointers with what each gap blocks, installs nothing, and exits 2 when something required is absent |
 | is anything missing, did I lose a file | `scaffold.py check` | modular; no skill needed |
+| this project doesn't need `data/raw/` (or another empty scaffold folder), I deleted those folders | `scaffold.py drop` | modular. Records `dropped_dirs:` in `project.yml` so the folder is neither re-created nor reported missing; refuses a folder holding anything; `--restore` undoes it |
 | I have a folder full of work and want the structure around it | `setup-project-directory` | it runs `scaffold.py adopt` - scaffolds, then proposes a home for every unfiled file. Moves nothing without `--apply` |
 | what is this `notes/` folder, can the drafter use it | `scaffold.py survey` | modular; `writing-engine` runs it once per project and records the answer |
 | I need fake / dummy / placeholder data to test a figure | `idea.py mock` | modular |

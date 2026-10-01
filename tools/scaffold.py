@@ -338,7 +338,183 @@ def expects_data_drops(expects: str) -> tuple[frozenset, frozenset]:
     return frozenset(), frozenset()
 
 
-def offers_for(expects: str, paper_kind: str = "research") -> dict:
+# --- FOLDERS THE USER REMOVED ON PURPOSE -----------------------------------
+#
+# The empty folders above are created on every scaffold because a project
+# that turns out to need data/raw/ should not have to know it is missing. But
+# a project is allowed to decide it does not need one, and deleting the
+# folder by hand used to be read as damage: `check` said INCOMPLETE, `report`
+# said to re-run the scaffold, and the re-run put the folder straight back.
+# A report that always says the same wrong thing is a report nobody reads.
+#
+# So the decision is DECLARED, never sniffed - the rule `expects_data` and
+# `manages` follow. A folder that is absent because a sync lost it and a
+# folder that is absent because the author removed it look identical on disk,
+# and only the first is a defect. `scaffold.py drop` is the one writer of
+# `dropped_dirs:` in project.yml; a dropped folder is then neither created nor
+# reported missing, nothing is ever proposed into it, and `drop --restore`
+# brings it back. Every engine that WRITES into one of these folders creates
+# it on demand, so dropping one never breaks a writer - it only stops the
+# scaffold insisting on it.
+DROPPED_DIRS_KEY = "dropped_dirs"
+DROPPED_DIRS_RE = re.compile(r"^dropped_dirs:[ \t]*\[(.*?)\][ \t]*(#[^\n]*)?$",
+                             re.M)
+
+
+def droppable_dirs(paper_kind: str = "research") -> list[str]:
+    """The folders `drop` may record: the scaffold's empty folders, and
+    nothing else. A manifest FILE is not droppable - deleting a template is
+    `check`'s business, and a declared-absent methods.md is the form being
+    mistaken for the answer in reverse."""
+    return list(EMPTY_DIRS) + (list(REVIEW_EMPTY_ADDS)
+                               if paper_kind == "review" else [])
+
+
+def _norm_dir(d: str) -> str:
+    return d.strip().strip('"').strip("'").replace("\\", "/").strip("/")
+
+
+def dropped_dirs(root: str) -> list[str]:
+    """What project.yml records as removed on purpose, in recorded order."""
+    raw = _read_utf8(os.path.join(root, "project.yml")) or ""
+    m = DROPPED_DIRS_RE.search(raw)
+    if not m:
+        return []
+    out: list[str] = []
+    for part in m.group(1).split(","):
+        d = _norm_dir(part)
+        if d and d not in out:
+            out.append(d)
+    return out
+
+
+def _write_dropped_dirs(root: str, dirs: list[str]) -> None:
+    """Replace the `dropped_dirs:` line, or add one after `expects_data:`.
+
+    An empty list REMOVES the line rather than writing `dropped_dirs: []`:
+    a project that has dropped nothing should read exactly like one written
+    before this key existed.
+    """
+    path = os.path.join(root, "project.yml")
+    raw = _read_utf8(path) or ""
+    line = ("%s: [%s]" % (DROPPED_DIRS_KEY, ", ".join(dirs))
+            + "    # removed on purpose - `scaffold.py drop --restore` "
+              "brings one back") if dirs else ""
+    m = DROPPED_DIRS_RE.search(raw)
+    if m:
+        if line:
+            raw = raw[:m.start()] + line + raw[m.end():]
+        else:
+            end = m.end() + (1 if raw[m.end():m.end() + 1] == "\n" else 0)
+            raw = raw[:m.start()] + raw[end:]
+    elif line:
+        anchor = re.search(r"^expects_data:[^\n]*\n", raw, re.M)
+        if anchor:
+            raw = raw[:anchor.end()] + line + "\n" + raw[anchor.end():]
+        else:
+            raw = raw.rstrip("\n") + "\n" + line + "\n"
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write(raw)
+
+
+def _dir_contents(path: str) -> list[str]:
+    """Every file under `path` that is not a placeholder, relative to it."""
+    out = []
+    for dirpath, _dirs, files in os.walk(path):
+        for f in files:
+            if f.lower() in ADOPT_IGNORE_NAMES:
+                continue
+            out.append(os.path.relpath(os.path.join(dirpath, f), path)
+                       .replace(os.sep, "/"))
+    return sorted(out)
+
+
+def drop(root: str, dirs: list[str], restore: bool = False,
+         dry_run: bool = False) -> dict:
+    """Record scaffold folders as removed on purpose, or bring them back.
+
+    Never deletes a file. A folder with anything in it besides its
+    placeholder is REFUSED, by name and with what it holds: "this folder is
+    not needed" and "throw away what is in it" are two decisions, and only
+    the first was asked. An empty folder is removed, and a folder already
+    gone (deleted by hand, which is how most of these arrive) is simply
+    recorded.
+    """
+    project = read_project_yml(root)
+    kind = (project.get("paper_kind") or "research").strip()
+    allowed = droppable_dirs(kind)
+    res = {"path": os.path.abspath(root), "restore": restore,
+           "dry_run": dry_run, "actions": [], "errors": [],
+           "dropped_dirs": []}
+    if not os.path.isfile(os.path.join(root, "project.yml")):
+        res["errors"].append(
+            "%s has no project.yml, so there is nowhere to record the "
+            "decision - run `scaffold.py scaffold` first" % root)
+        return res
+    have = dropped_dirs(root)
+    want = list(have)
+    for d in (_norm_dir(x) for x in dirs):
+        if d not in allowed:
+            res["actions"].append({"dir": d, "action": "refused",
+                                   "why": "not one of the scaffold's empty "
+                                          "folders; droppable: "
+                                          + ", ".join(allowed)})
+            continue
+        full = os.path.join(root, *d.split("/"))
+        if restore:
+            if d not in want and os.path.isdir(full):
+                res["actions"].append({"dir": d, "action": "already",
+                                       "why": "present and not dropped"})
+                continue
+            if d in want:
+                want.remove(d)
+            res["actions"].append({"dir": d, "action": "restored", "why": ""})
+            if not dry_run:
+                os.makedirs(full, exist_ok=True)
+                keep = os.path.join(full, ".gitkeep")
+                if not os.path.exists(keep):
+                    open(keep, "w", encoding="utf-8").close()
+            continue
+        held = _dir_contents(full) if os.path.isdir(full) else []
+        if held:
+            res["actions"].append({
+                "dir": d, "action": "refused",
+                "why": "holds %d file%s (%s) - move %s first; drop never "
+                       "deletes work" % (
+                           len(held), "" if len(held) == 1 else "s",
+                           ", ".join(held[:3]) + (", ..." if len(held) > 3
+                                                  else ""),
+                           "it" if len(held) == 1 else "them")})
+            continue
+        existed = os.path.isdir(full)
+        if d not in want:
+            want.append(d)
+        res["actions"].append({"dir": d,
+                               "action": "dropped" if existed else "recorded",
+                               "why": "" if existed else
+                               "already gone from disk; the decision is "
+                               "now recorded"})
+        if existed and not dry_run:
+            shutil.rmtree(full)
+    if want != have and not dry_run:
+        _write_dropped_dirs(root, want)
+    res["dropped_dirs"] = want
+    return res
+
+
+def print_drop(res: dict) -> None:
+    for e in res["errors"]:
+        print("ERROR  " + e)
+    for a in res["actions"]:
+        print("  %-9s %-22s %s" % (a["action"], a["dir"] + "/", a["why"]))
+    if not res["errors"]:
+        print("dropped_dirs: [%s]%s" % (", ".join(res["dropped_dirs"]),
+                                         "   (dry run - nothing written)"
+                                         if res["dry_run"] else ""))
+
+
+def offers_for(expects: str, paper_kind: str = "research",
+               dropped: frozenset | set | list = ()) -> dict:
     """What setup-project-directory may offer to build, given the expectation.
 
     The policy lives here rather than in the skill for the reason every other
@@ -347,8 +523,13 @@ def offers_for(expects: str, paper_kind: str = "research") -> dict:
     false for anything but rows, and `image_placeholders` is the offer that
     replaces it - figure slots composed of grey panels that say what image is
     expected, so an imaging project still has a figure set on day one.
+
+    A project that dropped data/mock_data/ is not offered mock data either:
+    offering to fill a folder the author removed is asking a question they
+    already answered.
     """
     rows = expects == "measurements" and paper_kind != "review"
+    rows = rows and "data/mock_data" not in set(dropped)
     return {"mock_data": rows,
             "mock_floats": rows,
             "image_placeholders": expects == "images",
@@ -618,8 +799,10 @@ def scaffold(root: str, values: dict, dry_run: bool = False,
     # drops nothing.
     data_drops, data_empty_drops = expects_data_drops(expects_data)
     drops = (REVIEW_DROPS if review else frozenset()) | data_drops
+    # What the author removed on purpose is not re-created (see `drop`).
+    user_dropped = frozenset(dropped_dirs(root))
     empty_drops = ((REVIEW_EMPTY_DROPS if review else frozenset())
-                   | data_empty_drops)
+                   | data_empty_drops | user_dropped)
     empty_dirs = list(EMPTY_DIRS) + (REVIEW_EMPTY_ADDS if review else [])
 
     created: list[str] = []
@@ -717,7 +900,8 @@ def scaffold(root: str, values: dict, dry_run: bool = False,
         "field": values.get("field"),
         "paper_kind": paper_kind,
         "expects_data": expects_data,
-        "offers": offers_for(expects_data, paper_kind),
+        "offers": offers_for(expects_data, paper_kind, user_dropped),
+        "dropped_dirs": sorted(user_dropped),
         "target_journal": values.get("target_journal"),
     }
 
@@ -796,6 +980,7 @@ def check(root: str) -> dict:
                    | data_empty_drops)
     empty_dirs = list(EMPTY_DIRS) + (REVIEW_EMPTY_ADDS if review else [])
     manifest = list(FILES) + (REVIEW_ADDS if review else [])
+    user_dropped = dropped_dirs(root)
 
     present, missing, out_of_scope = [], [], []
     collisions: list[dict] = []
@@ -815,12 +1000,24 @@ def check(root: str) -> dict:
         if twin:
             collisions.append({"manifest": dest, "on_disk": twin})
         missing.append(dest)
+    dropped = []
     for d in empty_dirs:
         if d in empty_drops:
             out_of_scope.append(d + "/")
             continue
         p = os.path.join(root, d)
+        if d in user_dropped:
+            # Back on disk is fine: some engine wrote into it on request,
+            # and that is not a contradiction worth reporting.
+            dropped.append({"dir": d + "/", "exists": os.path.isdir(p)})
+            continue
         (present if os.path.isdir(p) else missing).append(d + "/")
+    # A missing folder that is one of the droppable ones gets the second
+    # route named, so `report` stops offering only the re-scaffold that
+    # would put back what the author deleted.
+    droppable = set(droppable_dirs("review" if review else "research"))
+    missing_droppable = [m for m in missing if m.rstrip("/") in droppable]
+    unknown_dropped = [d for d in user_dropped if d not in droppable]
     rendered = [g for g in GENERATED if os.path.exists(os.path.join(root, g))]
 
     # Float folders are reported, never required. How many floats a paper has
@@ -860,6 +1057,12 @@ def check(root: str) -> dict:
         "collisions": collisions,
         "rendered": rendered,
         "out_of_scope": out_of_scope,
+        # Folders project.yml records as removed on purpose (`drop`).
+        "dropped": dropped,
+        "missing_droppable": missing_droppable,
+        # A dropped_dirs entry naming no scaffold folder - a typo, most
+        # likely, and one that silently drops nothing.
+        "unknown_dropped": unknown_dropped,
         "paper_kind": "review" if review else "research",
         "expects_data": expects,
         "floats": float_report,
@@ -1893,6 +2096,13 @@ def mock_floats(root: str, bundle: dict, force: bool = False,
         return res
 
     rel_csv = "data/mock_data/%s_mock.csv" % cols["file"]
+    if "data/mock_data" in dropped_dirs(root):
+        res["errors"].append(
+            "data/mock_data/ was removed on purpose (project.yml "
+            "dropped_dirs), so there are no mock rows to build floats from. "
+            "`scaffold.py drop --restore data/mock_data`, then `idea.py "
+            "mock`, if you want them back.")
+        return res
     if not os.path.isfile(os.path.join(root, *rel_csv.split("/"))):
         res["errors"].append(
             "%s does not exist - run `idea.py mock` before building floats "
@@ -3229,7 +3439,14 @@ def reorganize_report(root: str, depth: int = 1) -> dict:
                                     for c in coll))),
         "" if not chk["missing"] else
         "the missing entries are listed by `scaffold.py check`",
-        "" if not chk["missing"] else "scaffold.py scaffold \"%s\"" % root)
+        "" if not chk["missing"] else
+        "scaffold.py scaffold \"%s\"" % root + (
+            "" if not chk["missing_droppable"] else
+            " - or, if %s %s removed on purpose, scaffold.py drop \"%s\" %s"
+            % (", ".join(chk["missing_droppable"]),
+               "was" if len(chk["missing_droppable"]) == 1 else "were",
+               root, " ".join(m.rstrip("/")
+                              for m in chk["missing_droppable"]))))
 
     seen = survey(root, include_recorded=True, depth=depth)
     unsorted = seen["unexpected"]
@@ -3337,6 +3554,7 @@ def adopt(root: str, values: dict, dry_run: bool = False,
     _, empty_dropped = expects_data_drops(expects)
     dropped = set(empty_dropped) | set(
         REVIEW_EMPTY_DROPS if paper_kind == "review" else ())
+    user_dropped = set(scaf.get("dropped_dirs") or ())
 
     res = {"path": os.path.abspath(root), "scaffold": scaf,
            "extras": [], "moved": [], "conflicts": [], "errors": [],
@@ -3356,6 +3574,14 @@ def adopt(root: str, values: dict, dry_run: bool = False,
         # not a proposal. Saying so is the useful move: a CSV in a project
         # that expects no data means one of the two is wrong, and only the
         # user knows which.
+        if dest and dest in user_dropped:
+            e["confidence"] = "ask"
+            e["why"] = ("%s - but project.yml records %s as removed on "
+                        "purpose, so it is not proposed as a home. "
+                        "`scaffold.py drop --restore %s` brings it back if "
+                        "this is what it was for." % (e["why"], dest, dest))
+            e["proposal"] = ""
+            dest = ""
         if dest and (dest in dropped
                      or (expects == "none" and dest.startswith("data/"))):
             e["confidence"] = "ask"
@@ -4671,7 +4897,24 @@ def print_check(res: dict) -> None:
           f"{len(res['missing'])} missing")
     for m in res["missing"]:
         print(f"    missing  {m}")
+    md = res.get("missing_droppable") or []
+    if md:
+        print("    removed on purpose? record it, and it stops being "
+              "reported or re-created:")
+        print("      scaffold.py drop <project> "
+              + " ".join(m.rstrip("/") for m in md))
     _print_collisions(res)
+    dropped = res.get("dropped") or []
+    if dropped:
+        print(f"  dropped on purpose ({len(dropped)}) - project.yml "
+              f"dropped_dirs, never re-created:")
+        for d in dropped:
+            print(f"    dropped  {d['dir']}"
+                  + ("   (back on disk - something wrote into it)"
+                     if d["exists"] else ""))
+    for u in res.get("unknown_dropped") or []:
+        print(f"    WARNING  dropped_dirs names {u}, which is not a scaffold "
+              f"folder - a typo drops nothing")
     oos = res.get("out_of_scope") or []
     if oos:
         # Named, not silently omitted. "This project has no data/" is a fact
@@ -5181,6 +5424,20 @@ def main() -> int:
     t = sub.add_parser("tree", help="print the project tree", parents=[common])
     t.add_argument("path")
 
+    dr = sub.add_parser("drop", parents=[common],
+                        help="record scaffold folders the project does not "
+                             "need, so they are neither re-created nor "
+                             "reported missing; --restore brings them back")
+    dr.add_argument("path")
+    dr.add_argument("dirs", nargs="+", metavar="DIR",
+                    help="project-relative scaffold folder, e.g. data/raw. "
+                         "Only the scaffold's empty folders are droppable, "
+                         "and one holding any file is refused, never "
+                         "emptied")
+    dr.add_argument("--restore", action="store_true",
+                    help="un-record each folder and re-create it")
+    dr.add_argument("--dry-run", action="store_true")
+
     mf = sub.add_parser("mock-floats", parents=[common],
                         help="fill the float slots with runnable mock scripts")
     mf.add_argument("path")
@@ -5476,6 +5733,16 @@ def main() -> int:
         # Nothing named, or nothing written, is a report rather than a
         # failure: prefilling nothing is the correct default (10.1).
         return 1 if res["unknown"] else 0
+
+    if args.cmd == "drop":
+        res = drop(args.path, args.dirs, restore=args.restore,
+                   dry_run=args.dry_run)
+        if args.json:
+            print(json.dumps(res, indent=2, ensure_ascii=False))
+        else:
+            print_drop(res)
+        refused = any(a["action"] == "refused" for a in res["actions"])
+        return 2 if res["errors"] else 1 if refused else 0
 
     if args.cmd == "mock-floats":
         if not os.path.isdir(args.path):

@@ -346,6 +346,8 @@ What you get, and what each part is for:
 
 It **never overwrites**, which is what makes it safe to run against a folder you are not sure about — and what makes `scaffold.py check` usable as a repair tool. Point it at a folder that is missing half the tree and it reports what is absent, which floats have no script, and which scripts are sitting somewhere nothing will render them.
 
+**Not every project needs every folder.** If yours has no use for `data/raw/`, `data/mock_data/` or another empty scaffold folder, say so and the folder is recorded as dropped (`scaffold.py drop`, written to `project.yml` as `dropped_dirs:`). After that it is not re-created, not reported missing, and nothing is filed into it. Deleting it by hand is not enough: a folder that is simply gone looks exactly like one a sync lost, and `check` reports it missing. `drop` removes only an empty folder and never deletes a file. `--restore` brings a folder back.
+
 ### Mock data, and mock floats
 
 Offered at setup: rows shaped like your hypothesis, and example figures built from them. A figure built on hypothesis-shaped mock data is a test of the figure *and of the claim*, before any sample is prepped — and sometimes the answer is that the claim is weaker than it sounded, which is much cheaper to learn now.
@@ -691,6 +693,7 @@ No skill and no agent is required for any of these. Every one takes `--json`, on
 |---|---|
 | Scaffold a project | `python tools/scaffold.py scaffold "<path>"` |
 | Find what a project is missing | `python tools/scaffold.py check "<path>"` |
+| Record an empty scaffold folder the project does not need, or bring it back | `python tools/scaffold.py drop "<path>" data/raw [--restore]` |
 | Adopt a folder that already has work in it | `python tools/scaffold.py adopt "<path>"` |
 | See what the structure does not explain | `python tools/scaffold.py survey "<path>"` |
 | See the tree | `python tools/scaffold.py tree "<path>"` |

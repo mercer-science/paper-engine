@@ -66,6 +66,7 @@ python <tools>/scaffold.py adopt "<path>" --json --apply [--sweep-unknown]
 python <tools>/scaffold.py float-order "<path>" --json
 python <tools>/scaffold.py report "<path>" --json
 python <tools>/scaffold.py check "<path>" --json
+python <tools>/scaffold.py drop "<path>" <dir> ... --json   # an empty scaffold folder this project does not need
 ```
 
 `adopt` scaffolds first — so a proposal can name a destination that exists —
@@ -82,6 +83,7 @@ without `--apply`, it never deletes, and it never renames.**
 | set up / start / scaffold a project | `setup-project-directory` — an empty folder is a different job |
 | there is a `notes/` folder, can the drafter use it | `scaffold.py survey` alone; no reorganisation needed |
 | is anything missing | `scaffold.py check` alone |
+| I don't need `data/raw/` (or another empty scaffold folder), delete these empty folders, I deleted them | `scaffold.py drop` with each folder: it records the decision in `project.yml` so the folder is not re-created or reported missing. It refuses a folder that holds anything. See `setup-project-directory`, "Folders the Project Does Not Need" |
 | put this on GitHub, sync this between my computers, stop syncing | **Not this skill.** github-ai-project-manager does it; run `github-offer` and hand over as in "GitHub", skipping the question |
 
 ## The Conversation, in Order
