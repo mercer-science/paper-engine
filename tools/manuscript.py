@@ -4266,6 +4266,32 @@ def identifier_flags(text: str) -> list[str]:
 # not list is a section an editor screens out.
 STATEMENT_HOMES = {"ethics": "methods"}
 
+# Item 165. The home section can already say it - "was conducted with
+# institutional review board approval" sits in the cohort paragraph of most
+# clinical papers - and appending the statement after it gave Methods a
+# one-sentence paragraph repeating the sentence above it.
+ETHICS_STATED_RE = re.compile(
+    r"institutional review board|ethics (?:committee|board)|\bIRB\b|"
+    r"research ethics", re.IGNORECASE)
+
+# An approval identifier as an ethics statement writes one: `protocol
+# STU-2021-0001`, `IRB #2021-0001`, `approval no. 2021/88`. It must hold a
+# digit, so the journal's own filler (`protocol XXXX`) is not one.
+ETHICS_ID_RE = re.compile(
+    r"\b(?:protocol|IRB|approval|reference|study)\s*(?:no\.?|number|#|ID)?"
+    r"\s*[:#]?\s*([A-Za-z0-9][\w/-]*\d[\w/-]*)", re.IGNORECASE)
+
+
+def ethics_identifiers(project: str) -> list[str]:
+    """The approval identifiers the ethics statement names. A double-blind
+    journal requires every one removed from the manuscript (`anonymization.
+    remove`: ethics board identifiers), wherever in the text it appears - in
+    the statement, and in a Methods sentence that cites it too."""
+    src = STATEMENT_HEADINGS.get("ethics", ("", ""))[1]
+    text = _statement_text(project, src)
+    return sorted({m.group(1).rstrip("-/") for m in ETHICS_ID_RE.finditer(
+        text or "")}, key=len, reverse=True)
+
 
 def inline_statement(section_md: str, statement_md: str) -> str:
     """A statement's text, headingless, at the end of a section's first
@@ -19222,6 +19248,9 @@ SUPPLEMENT_DOCX = "supplementary_info_r%d%s.docx"
 # file in either form is one somebody wrote and neither is wrong.
 CAPTION_BLOCK_RE = re.compile(
     r"^(?:#{1,6}[ \t]+|\*\*)(Figure|Table)[ \t]+(S?)(\d+)\b", re.M)
+# A supplementary caption under whatever letter the journal uses (S, E, ...).
+SUPP_CAPTION_BLOCK_RE = re.compile(
+    r"^(?:#{1,6}[ \t]+|\*\*)(Figure|Table)[ \t]+([A-Z])(\d+)\b", re.M)
 
 
 def split_caption_blocks(text: str) -> tuple[str, list[dict]]:
@@ -19644,10 +19673,13 @@ def build_supplementary(project: str, journal: str, rnd: int, req: dict,
                        "y" if len(tables) > 1 else "ies", stp,
                        SUPPLEMENT_STEM))
     # The figures supplementary.md embeds itself count as embedded too.
+    # Any one-letter prefix, not only S: after `fix_supplement_labels` an
+    # IJROBP supplement reads `Figure E1`, and counting only `S` reported
+    # "no figure embedded" over a file with both figures in it (item 164).
     for m in re.finditer(r"!\[[^\]]*\]\(", body):
-        near = CAPTION_BLOCK_RE.search(body, m.end())
-        if near and near.group(2):
-            lab = "%s S%s" % (near.group(1), near.group(3))
+        near = SUPP_CAPTION_BLOCK_RE.search(body, m.end())
+        if near:
+            lab = "%s %s%s" % (near.group(1), near.group(2), near.group(3))
             if lab not in res["embedded"]:
                 res["embedded"].append(lab)
 
@@ -20284,13 +20316,28 @@ def assemble(project: str, journal: str, allow_mock: bool = False,
             # block - its FLAG named the institution, and the journal says
             # to anonymize institutions "including when declaring
             # institutional review board approval".
-            md = blind_text(md, _blind_names(project), _blind_filler(req))
+            md = blind_text(md, _blind_names(project) + ethics_identifiers(
+                project), _blind_filler(req))
         # Item 149. A statement with a conventional home INSIDE a section
         # goes there - ethics approval sits with the patient cohort in the
         # first Methods subsection - and is never given a heading of its own.
         home = STATEMENT_HOMES.get(key, "")
         if home and home in stem_part:
             i = stem_part[home]
+            if key == "ethics" and ETHICS_STATED_RE.search(parts[i]):
+                # Item 165. Said already, in the authors' own sentence; a
+                # second paragraph saying it again is what was asked away.
+                missing = [x for x in ethics_identifiers(project)
+                           if x not in parts[i]]
+                warnings.append(
+                    "the ethics statement is already made in %s, so it is "
+                    "not added again as a paragraph of its own; the full "
+                    "statement stays in the author files and on the title "
+                    "page%s" % (names[i] or home,
+                                (" - the approval identifier %s is not in "
+                                 "that sentence" % ", ".join(missing))
+                                if missing else ""))
+                continue
             parts[i] = inline_statement(parts[i], md)
             warnings.append(
                 "the %s statement has no slot in structure.section_order, so "
@@ -20414,6 +20461,10 @@ def assemble(project: str, journal: str, allow_mock: bool = False,
         # the blinded file passed it, and following it breaks the blinding.
         prose_md = blind_flags(prose_md, _blind_names(project),
                                _blind_filler(req))
+        # Item 165. An approval identifier is masked wherever the body
+        # cites it, not only inside the generated statement.
+        prose_md = blind_text(prose_md, ethics_identifiers(project),
+                              _blind_filler(req))
         blind_flag_hits = identifier_flags(prose_md)
         for h in blind_flag_hits:
             warnings.append(
@@ -22867,20 +22918,45 @@ def parse_bib(text: str) -> list[dict]:
     return entries
 
 
+def ris_text(value: str) -> str:
+    """A .bib value as RIS wants it: BibTeX's case-protection braces are
+    markup, and a reference manager imports them literally (item 158), so
+    `{RefleXion Medical}` would arrive as an author named with braces."""
+    return " ".join(value.replace("{", "").replace("}", "").split())
+
+
+def bib_authors(value: str) -> list[str]:
+    """Split a .bib author list on ` and ` at brace depth 0 only: a braced
+    corporate author - `{Radiation Therapy and Oncology Group}` - is one
+    name, and its own `and` is not a separator."""
+    names, depth, start = [], 0, 0
+    for m in re.finditer(r"[{}]|\s+and\s+", value):
+        tok = m.group(0)
+        if tok == "{":
+            depth += 1
+        elif tok == "}":
+            depth = max(0, depth - 1)
+        elif depth == 0:
+            names.append(value[start:m.start()])
+            start = m.end()
+    names.append(value[start:])
+    return [n.strip() for n in names if n.strip()]
+
+
 def to_ris(entries: list[dict]) -> str:
     out: list[str] = []
     for e in entries:
         f = e["fields"]
         out.append("TY  - " + BIB_TO_RIS_TYPE.get(e["type"], "GEN"))
-        for author in re.split(r"\s+and\s+", f.get("author", "")):
-            author = author.strip()
+        for author in bib_authors(f.get("author", "")):
+            author = ris_text(author)
             if author:
                 out.append("AU  - " + author)
         if f.get("year"):
             out.append("PY  - " + re.sub(r"\D", "", f["year"])[:4])
         for name, tag in RIS_FIELDS:
-            if f.get(name):
-                out.append(f"{tag}  - {f[name]}")
+            if ris_text(f.get(name, "")):
+                out.append(f"{tag}  - {ris_text(f[name])}")
         pages = f.get("pages", "")
         if pages:
             bits = re.split(r"-+", pages)

@@ -105,9 +105,9 @@ modules and are still callable standalone.
 
 ### What Was Last Measured
 
-**2026-09-30, after GitHub moved to github-ai-project-manager.** Offline
-suites on Python 3.12 with pandoc 3.1.3 and the optional packages, no R:
-manuscript **2735** (1 skipped), portability **1236**, scaffold **574**
+**2026-10-12, after items 158, 164 and 165.** Offline suites on Python
+3.12 with pandoc 3.1.3 and the optional packages, no R (manuscript and
+portability re-run on 3.14 that day): manuscript **2748**, portability **1236**, scaffold **574**
 (6 skipped; the 12 checks of the old sync gone, 36 for the offer added),
 labpack **359**, prose 475, learn 259, install 190, idea 192, review 161,
 docx_edits 107, help_deck 118. Run the suites `AGENTS.md` names before

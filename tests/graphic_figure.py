@@ -614,6 +614,16 @@ def test_geometry():
               not os.path.exists(os.path.join(fdir, "figure_source.png")))
         check("...and the override is offered by name",
               "--allow-overlap" in (out.get("error") or ""))
+        # The collision is a fault in the drawing, so a machine with no R
+        # must hear about it too, not "Rscript not found".
+        real_rscript = getattr(gf, "_rscript")
+        setattr(gf, "_rscript", lambda: None)
+        try:
+            no_r = gf.render(root, 1)
+        finally:
+            setattr(gf, "_rscript", real_rscript)
+        check("...and with no R the collision is still what is reported",
+              "collision" in (no_r.get("error") or ""), no_r.get("error"))
 
         # --- a leader line touching its OWN label is not a collision ---
         # This is the false positive that would make the check worthless: a

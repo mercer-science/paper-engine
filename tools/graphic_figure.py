@@ -687,9 +687,6 @@ def render(root: str, number: int | None = None, force: bool = False,
            supplementary: bool = False, timeout: int = 240,
            allow_overlap: bool = False) -> dict:
     """Render the panel sources without going through the whole R pipeline."""
-    rs = _rscript()
-    if not rs:
-        return {"error": "Rscript not found on PATH or under C:/Program Files/R"}
     targets = []
     for f in list_float_dirs(root):
         if number is not None and not (f["n"] == number
@@ -715,6 +712,13 @@ def render(root: str, number: int | None = None, force: bool = False,
                           "rather than writing it. `--allow-overlap` "
                           "overrides, and says so in the result."
                           % len(geo["collisions"]))}
+
+    # R is looked for only now: a collision is a fault in the drawing, and it
+    # has to be reported on a machine with no R as well as on one with it.
+    rs = _rscript()
+    if not rs:
+        return {"error": "Rscript not found on PATH or under C:/Program Files/R",
+                "geometry": geo}
 
     done = []
     for f in targets:

@@ -1605,6 +1605,26 @@ def test_ris(root: str) -> None:
           "ID  - jensen2019arrays" in ris, True)
     check("every record is terminated", ris.count("ER  - "), 1)
 
+    # --- 158: BibTeX's protective braces are markup, not text ---------------
+    braced = ("@article{g2021t,\n"
+              "  title = {A {PET}-Guided {Example} Study},\n"
+              "  author = {{Example Study Group} and Bell, Ada and "
+              "{Thermophile and Array Consortium}},\n"
+              "  journal = {{Example} Journal},\n  year = {2021}\n}\n")
+    ris = ms.to_ris(ms.parse_bib(braced))
+    check("158: no brace reaches the RIS file", ("{" in ris, "}" in ris),
+          (False, False))
+    check("158: a braced title keeps its words and its case",
+          "TI  - A PET-Guided Example Study" in ris, True)
+    check("158: a braced corporate author is one AU line, unbraced",
+          "AU  - Example Study Group" in ris, True)
+    check("158: an `and` inside a corporate author does not split it",
+          ([l for l in ris.splitlines() if l.startswith("AU  - ")]),
+          ["AU  - Example Study Group", "AU  - Bell, Ada",
+           "AU  - Thermophile and Array Consortium"])
+    check("158: the journal field is unbraced too",
+          "JO  - Example Journal" in ris, True)
+
 
 def test_rounds(root: str) -> None:
     section("Round snapshots, unconditional by design (spec 10.2, 10.4)")
@@ -13782,6 +13802,43 @@ def test_items_138_to_157(tmp: str) -> None:
         if ex else ""
     check("149: ...the sentence is in the build, inside the methods section",
           (len(ex), first_after), (1, "Results"))
+
+    # 165: Methods already states the approval - no second paragraph, and
+    # the identifier is one a blinded build masks wherever it appears
+    write(root, aff, read(os.path.join(root, aff)).replace(
+        "The study was approved by the institutional review board.",
+        "The study was approved by the institutional review board "
+        "(protocol 0042-x).", 1))
+    meth = stfile(root, "methods.md")
+    meth_before = read(meth)
+    write(root, "drafts/source_text/methods.md", meth_before.rstrip()
+          + "\n\nThe study was conducted with institutional review board "
+          "approval (protocol 0042-x).\n")
+    res = ms.assemble(root, "Langmuir", force=True)
+    seq = _para_seq(_doc_xml(res["output"]))
+    check("165: an approval Methods already states is not repeated as a "
+          "paragraph of its own",
+          (len([t for _s, t in seq if "institutional review board" in t]),
+           len([t for _s, t in seq
+                if "approved by the institutional review board" in t])),
+          (1, 0))
+    check("165: ...and the build says why it was left out",
+          any("already made in" in w for w in res["warnings"]), True)
+    check("165: the statement's approval identifier is read",
+          ms.ethics_identifiers(root), ["0042-x"])
+    check("165: ...and masked in body text by a blinded build's filler",
+          ms.blind_text("approval (protocol 0042-x).",
+                        ms.ethics_identifiers(root)),
+          "approval (protocol XXXX).")
+    check("164: an embedded supplementary figure is counted under the "
+          "journal's letter, and a main-text caption is not",
+          ([m.group(2) for m in ms.SUPP_CAPTION_BLOCK_RE.finditer(
+              "**Figure E1. A.**\n\n**Figure S2. B.**\n\n**Figure 3. C.**")]),
+          ["E", "S"])
+    check("165: the journal's own filler is not an identifier",
+          [m.group(1) for m in ms.ETHICS_ID_RE.finditer(
+              "approval (protocol XXXX)")], [])
+    write(root, "drafts/source_text/methods.md", meth_before)
 
     # 144/147: an imported .docx carries its comments into the ledger
     fixture = os.path.join(FIXTURES, "tracked_two_authors.docx")
