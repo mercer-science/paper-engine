@@ -25,6 +25,13 @@ rather than guessing any of those.
 | `plan/author_information/conflict_statements/` | the signed competing-interest forms, one file per author, named with their initials. `submission-package` counts them and says who has not returned one; it never opens them |
 | `obsolete/` | mirrors the live tree; retired things keep their shape |
 
+**A folder this project does not need** — `data/raw/`, `data/mock_data/`, any
+of the empty ones — is dropped with
+`python <toolkit>/tools/scaffold.py drop . data/raw`, not just deleted. That writes
+`dropped_dirs:` into `project.yml`, so the folder is neither re-created nor
+reported missing. `--restore` brings it back. A folder that is simply gone
+looks exactly like one a sync lost.
+
 ## `.here` — do not delete
 
 The zero-byte `.here` file at the project root is what makes `here::here()`

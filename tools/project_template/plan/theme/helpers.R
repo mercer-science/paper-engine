@@ -37,7 +37,14 @@ float_used_mock <- function() {
 load_data <- function(path, ...) {
   full <- if (file.exists(path)) path else here::here(path)
   if (!file.exists(full)) {
+    # A script still pointing into a folder the project removed on purpose
+    # (scaffold.py drop) is a different fix from a file not delivered yet,
+    # so it gets a different message: point the script somewhere else.
+    gone <- !dir.exists(dirname(full))
     stop("load_data(): no such file: ", path,
+         if (gone) paste0("\n  ", dirname(path), "/ does not exist in this ",
+                          "project - point this script at where the data ",
+                          "actually lives.") else "",
          "\n  Column names and files are contracted in data/data_contract.md.",
          call. = FALSE)
   }
