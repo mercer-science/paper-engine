@@ -38,7 +38,7 @@ Python.
 | `tools/labpack.py` | the lab resource pack and the drop-zones: which pack this copy resolves, where a member's own material may safely live, the live inventory read that is offered rather than automatic, and **`brief`** - one project's copy of the pack, every step quoted and dated, with that project's decisions and open questions against each one. **Content only - no lab name appears in this engine** |
 | `tools/learn.py` | the learning loop: what the user's edits teach, the rules induced from them, and the drafting brief that carries them into the next paper |
 | `tools/toc_graphic.py` | the TOC / graphical abstract: the `.pptx` to edit, the render script, the staleness hash, the journal's own example graphics in `examples/`, the block in `source_text/` |
-| `tools/graphic_figure.py` | PowerPoint panel art inside a figure folder: the `.pptx` to draw in, the render script, the staleness hash |
+| `tools/graphic_figure.py` | PowerPoint panel art inside a figure folder: the `.pptx` to draw in, the render script, the staleness hash, and the record of an approved draft and the connector (BioRender) versions made from it |
 | `tools/install_skills.py` | make the skills discoverable from any directory, and **`doctor`** - is this machine set up to run the engine: the programs, the packages and the pointers, each row saying what its absence blocks. It is what the README's *"check the paper engine is set up on this machine"* resolves to. Reports; installs nothing |
 | `tools/help_deck.py` | build `help/paper_engine_overview.pptx` — the flow chart of how the stages and agents interact, drawn from the module list. Reads no project and writes nothing a paper depends on. **`build` overwrites the shipped deck and discards hand edits, so run it only when the user asks for it in those words** — see the standing rule below |
 
@@ -341,6 +341,17 @@ rule 3 is a ceiling rather than a preference.
 reported rather than silently swallowed. Same honesty rule as the PubMed
 coverage caveat: say which thing happened.
 
+**Graphical connectors (BioRender) follow the same three rules, in a fixed
+order: PowerPoint first.** Drawn art is drafted as the PowerPoint panel
+`create-graphic-figure` writes, the user approves the rendered draft, and only
+then is a BioRender version offered - made from the approved draft as its
+reference, compared back against it with every difference told to the user,
+and recorded with `graphic_figure.py connector-record`, which refuses a draft
+that was never approved or has changed since. The PowerPoint figure is complete
+without the connector (rule 3). It is offered for **drawn art only**: a plotted
+panel is drawn from the data by `figure.R`, and a redrawn chart is a chart
+nobody can re-derive.
+
 ## House rules that hold regardless of harness
 
 These are not stylistic. Each one exists because a specific failure was found
@@ -473,7 +484,7 @@ python tests/sequence.py       # 100 checks, offline; a stub HTTP server.
                                #    in the suite's own docstring
 python tests/toc_graphic.py    # 312 checks offline; --render drives a real
                                #   PowerPoint/LibreOffice export (319 with it)
-python tests/graphic_figure.py # 62 checks offline; --render drives real
+python tests/graphic_figure.py # 86 checks offline; --render drives real
                                #   PowerPoint and real R (72 with it). The
                                #   geometry block needs python-pptx and
                                #   SKIPS, loudly, without it

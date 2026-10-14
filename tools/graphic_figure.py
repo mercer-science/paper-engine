@@ -34,11 +34,22 @@ Usage:
   python graphic_figure.py add "path/to/Project" --figure 2 --panel A
   python graphic_figure.py add "path/to/Project" --figure 2          # whole figure
   python graphic_figure.py render "path/to/Project" [--figure 2] [--force]
+  python graphic_figure.py approve "path/to/Project" --figure 2 --panel A
+  python graphic_figure.py connector-record "path/to/Project" --figure 2 \
+      --panel A --connector biorender --url <editor link> [--export <file>]
+
+PowerPoint first, a graphical connector second. The .pptx is always the draft,
+and the only route that works with no connector attached. A version drawn in a
+connector such as BioRender is made only from a draft the user has approved,
+and `approve` / `connector-record` are the record of that: which draft was
+approved (by content hash), which connector version was made from it, and -
+in `status` - whether either has fallen behind the .pptx since.
 """
 
 from __future__ import annotations
 
 import argparse
+import datetime
 import hashlib
 import importlib.util
 import json
@@ -60,6 +71,10 @@ for _stream in (sys.stdout, sys.stderr):
 HERE = os.path.dirname(os.path.abspath(__file__))
 TEMPLATE_DIR = os.path.join(HERE, "project_template")
 STATE_FILE = ".render_state.json"
+# Kept apart from STATE_FILE on purpose: plan/theme/render_pptx.R rewrites that
+# one on every render, and an approval it did not know about would not survive.
+CONNECTOR_FILE = ".connector_state.json"
+CONNECTOR_RE = re.compile(r"^[a-z][a-z0-9-]{1,30}$")
 PANELS_SCRIPT = "panels.R"
 
 
@@ -357,7 +372,9 @@ def status(root: str) -> dict:
             "label": f["label"], "dir": f["rel"],
             "has_panels_script": os.path.isfile(
                 os.path.join(f["path"], PANELS_SCRIPT)),
-            "sources": [source_state(f["path"], s) for s in srcs]})
+            "sources": [dict(source_state(f["path"], s),
+                             **connector_state(f["path"], s))
+                        for s in srcs]})
     return {"path": os.path.abspath(root), "floats": floats,
             "backend": detect_backend(),
             "stale": sum(1 for fl in floats for s in fl["sources"]
@@ -744,6 +761,193 @@ def render(root: str, number: int | None = None, force: bool = False,
             "ok": all(d["ok"] for d in done)}
 
 
+# ---------------------------------------------------------------------------
+# PowerPoint first, a graphical connector second
+# ---------------------------------------------------------------------------
+# A connector such as BioRender draws better art than a layout skeleton, and it
+# is still a connector: the skill has to finish its whole job without one
+# (AGENTS.md, Connectors rule 3). So the .pptx stays the draft and the thing
+# the figure composes until the user says otherwise, and a connector version is
+# made only from a draft the user approved. Which draft that was, and whether
+# the connector version still matches it, has a right answer - so it is here,
+# as a content hash, and not in a sentence of the skill's that nobody re-reads.
+
+TK_RE = re.compile(rb"\[TK:")
+
+
+def read_connector_state(float_path: str) -> dict:
+    try:
+        with open(os.path.join(float_path, CONNECTOR_FILE), "r",
+                  encoding="utf-8") as fh:
+            data = json.load(fh)
+        return data if isinstance(data, dict) else {}
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def _write_connector_state(float_path: str, data: dict) -> None:
+    with open(os.path.join(float_path, CONNECTOR_FILE), "w",
+              encoding="utf-8", newline="\n") as fh:
+        json.dump(data, fh, indent=2, ensure_ascii=False)
+        fh.write("\n")
+
+
+def unresolved_placeholders(pptx: str) -> int:
+    """How many `[TK: ...]` labels the slides still carry.
+
+    A slide still holding the skeleton's placeholders is the form, not the
+    answer, and approving it would hand a connector "[TK: starting point]" as
+    though someone had chosen it."""
+    import zipfile
+    try:
+        with zipfile.ZipFile(pptx) as z:
+            return sum(len(TK_RE.findall(z.read(n)))
+                       for n in z.namelist()
+                       if re.match(r"ppt/slides/slide\d+\.xml$", n))
+    except (OSError, zipfile.BadZipFile, KeyError):
+        return -1
+
+
+def connector_state(float_path: str, source: str) -> dict:
+    """Has the draft been approved, and is each connector version current?
+
+    `changed_since_approval` is the PowerPoint draft moving on after the user
+    approved it; a connector version made from the older draft is then
+    `stale`, because it no longer shows what the draft shows."""
+    rec = read_connector_state(float_path).get(source, {})
+    digest = _sha256(os.path.join(float_path, source))
+    appr = rec.get("approved") or {}
+    approved = bool(appr.get("sha256"))
+    versions = []
+    for v in rec.get("versions", []):
+        export = v.get("export", "")
+        versions.append(dict(
+            v, stale=v.get("from_sha256") != digest,
+            export_present=bool(export) and os.path.isfile(
+                os.path.join(float_path, export))))
+    return {"approved": approved,
+            "approved_at": appr.get("at", ""),
+            "changed_since_approval": approved and appr["sha256"] != digest,
+            "connector_versions": versions}
+
+
+def _resolve_source(root: str, number: int, panel: str,
+                    supplementary: bool) -> tuple:
+    fl = find_float(root, number, supplementary)
+    label = f"Figure {'S' if supplementary else ''}{number}"
+    if fl is None:
+        return None, "", f"no {label} in plan/figures/"
+    panel = (panel or "").strip().upper()
+    source = f"panel{panel}_source.pptx" if panel else "figure_source.pptx"
+    if source not in sources_in(fl["path"]):
+        have = ", ".join(sources_in(fl["path"])) or "no PowerPoint source"
+        return fl, source, (f"{fl['rel']} has no {source} ({have}). The "
+                            f"PowerPoint draft comes first: `add` it, draw "
+                            f"it, then approve it.")
+    return fl, source, ""
+
+
+def approve(root: str, number: int, panel: str = "",
+            supplementary: bool = False) -> dict:
+    """Record that the user approved this PowerPoint draft, by content hash.
+
+    Run only on the user's say-so: approval is theirs to give, and this is
+    the record of it, not a judgment of the drawing."""
+    fl, source, err = _resolve_source(root, number, panel, supplementary)
+    if err:
+        return {"error": err}
+    pptx = os.path.join(fl["path"], source)
+    tk = unresolved_placeholders(pptx)
+    if tk < 0:
+        return {"error": f"{fl['rel']}/{source} could not be read as a .pptx"}
+    if tk:
+        return {"error": (f"{fl['rel']}/{source} still carries {tk} "
+                          f"[TK: ...] placeholder(s) from the skeleton. A "
+                          f"draft with the template's labels in it is not a "
+                          f"draft anyone approved - finish it in PowerPoint "
+                          f"first."),
+                "placeholders": tk}
+    rs = source_state(fl["path"], source)
+    data = read_connector_state(fl["path"])
+    rec = data.setdefault(source, {})
+    rec["approved"] = {"sha256": _sha256(pptx),
+                       "at": datetime.datetime.now().isoformat(
+                           timespec="seconds")}
+    rec.setdefault("versions", [])
+    _write_connector_state(fl["path"], data)
+    return {"path": os.path.abspath(root), "label": fl["label"],
+            "dir": fl["rel"], "source": source,
+            "approved_at": rec["approved"]["at"],
+            # The rendered draft is what a connector is shown as a visual
+            # reference. A stale or missing one would show it the wrong art.
+            "reference_png": f"{fl['rel']}/{source[:-5]}.png",
+            "reference_png_current": rs["rendered"] and not rs["stale"],
+            "superseded_versions": sum(
+                1 for v in rec["versions"]
+                if v.get("from_sha256") != rec["approved"]["sha256"])}
+
+
+def connector_record(root: str, number: int, panel: str = "",
+                     supplementary: bool = False, connector: str = "",
+                     url: str = "", export: str = "") -> dict:
+    """Record a connector version of an approved PowerPoint draft.
+
+    Refuses when there is no approval, and when the .pptx has changed since
+    it was approved - the connector version would then be recorded as made
+    from a draft nobody approved."""
+    connector = (connector or "").strip().lower()
+    if not CONNECTOR_RE.match(connector):
+        return {"error": "--connector is a short lowercase name, such as "
+                         "biorender"}
+    if not (url or export):
+        return {"error": "say where the connector version is: --url (its "
+                         "editor link) and/or --export (a file saved into "
+                         "the figure folder)"}
+    fl, source, err = _resolve_source(root, number, panel, supplementary)
+    if err:
+        return {"error": err}
+    st = connector_state(fl["path"], source)
+    if not st["approved"]:
+        return {"error": (f"{fl['rel']}/{source} has not been approved. The "
+                          f"PowerPoint draft comes first: show it to the "
+                          f"user, and run `approve` only once they say it is "
+                          f"right.")}
+    if st["changed_since_approval"]:
+        return {"error": (f"{fl['rel']}/{source} has changed since it was "
+                          f"approved ({st['approved_at']}). Show the user "
+                          f"the current draft and `approve` it again before "
+                          f"recording a {connector} version of it.")}
+    if export:
+        full = os.path.abspath(os.path.join(fl["path"], export))
+        if os.path.dirname(full) != os.path.abspath(fl["path"]):
+            return {"error": f"--export names a file in {fl['rel']}/ itself, "
+                             f"not {export!r}"}
+        if not os.path.isfile(full):
+            return {"error": f"{fl['rel']}/{export} does not exist - save the "
+                             f"export there first"}
+        if SOURCE_RE.match(os.path.basename(full)) or full.endswith(
+                source[:-5] + ".png"):
+            return {"error": f"{export} is the PowerPoint draft or its "
+                             f"render, not a {connector} export"}
+        export = os.path.basename(full)
+    data = read_connector_state(fl["path"])
+    rec = data.setdefault(source, {})
+    version = {"connector": connector, "url": url, "export": export,
+               "from_sha256": rec["approved"]["sha256"],
+               "at": datetime.datetime.now().isoformat(timespec="seconds")}
+    rec.setdefault("versions", []).append(version)
+    _write_connector_state(fl["path"], data)
+    line = ""
+    if export:
+        tag = panel_letter(source)
+        line = (f'graphic_panel("{export}", title = "[TK: panel title]"'
+                + (f', tag = "{tag}")' if tag else ")"))
+    return {"path": os.path.abspath(root), "label": fl["label"],
+            "dir": fl["rel"], "source": source, "version": version,
+            # figure.R is the user's: the swap is offered, never made.
+            "compose_line": line}
+
+
 def _r_str(s: str) -> str:
     return '"' + s.replace("\\", "/").replace('"', '\\"') + '"'
 
@@ -772,6 +976,18 @@ def print_status(res: dict) -> None:
                 state = f"current  {px}  via {s['backend']}"
             label = f"panel {s['panel']}" if s["panel"] else "whole figure"
             print(f"    {label:<14} {s['source']:<24} {state}")
+            if s.get("changed_since_approval"):
+                print(f"    {'':<14} draft CHANGED since it was approved "
+                      f"({s['approved_at']})")
+            elif s.get("approved"):
+                print(f"    {'':<14} draft approved {s['approved_at']}")
+            for v in s.get("connector_versions", []):
+                where = v["export"] or v["url"]
+                if v["export"] and not v["export_present"]:
+                    where += "  (export MISSING from the folder)"
+                mark = ("STALE - made from an older draft" if v["stale"]
+                        else "current")
+                print(f"    {'':<14} {v['connector']}: {mark}  {where}")
     print()
     if res["backend"]:
         print(f"render backend on this machine: {res['backend']}")
@@ -856,6 +1072,36 @@ def print_render(res: dict) -> None:
             print(f"    {s['source']:<24} {mark}")
 
 
+def print_approve(res: dict) -> None:
+    if res.get("error"):
+        print(res["error"])
+        return
+    print(f"Approved {res['dir']}/{res['source']}  ({res['approved_at']})")
+    if res["reference_png_current"]:
+        print(f"  reference image for a connector: {res['reference_png']}")
+    else:
+        print(f"  {res['reference_png']} is missing or stale - render first "
+              f"if a connector is to be shown the draft")
+    if res["superseded_versions"]:
+        print(f"  {res['superseded_versions']} earlier connector version(s) "
+              f"were made from a different draft and are now stale")
+
+
+def print_connector_record(res: dict) -> None:
+    if res.get("error"):
+        print(res["error"])
+        return
+    v = res["version"]
+    print(f"Recorded a {v['connector']} version of {res['dir']}/"
+          f"{res['source']}")
+    if v["url"]:
+        print(f"  {v['url']}")
+    if res["compose_line"]:
+        print("  figure.R still composes the PowerPoint render. To use this "
+              "version instead,")
+        print(f"  change that panel's line to:\n      {res['compose_line']}")
+
+
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
@@ -909,6 +1155,28 @@ def main() -> int:
     gm.add_argument("--figure", type=int, default=None)
     gm.add_argument("--supplementary", action="store_true")
 
+    ap = sub.add_parser("approve", parents=[common],
+                        help="record that the user approved a PowerPoint "
+                             "draft - the step before any connector version")
+    ap.add_argument("path")
+    ap.add_argument("--figure", type=int, required=True)
+    ap.add_argument("--panel", default="")
+    ap.add_argument("--supplementary", action="store_true")
+
+    cr = sub.add_parser("connector-record", parents=[common],
+                        help="record a connector version (BioRender, ...) "
+                             "of an approved PowerPoint draft")
+    cr.add_argument("path")
+    cr.add_argument("--figure", type=int, required=True)
+    cr.add_argument("--panel", default="")
+    cr.add_argument("--supplementary", action="store_true")
+    cr.add_argument("--connector", required=True,
+                    help="short lowercase name, such as biorender")
+    cr.add_argument("--url", default="", help="the version's editor link")
+    cr.add_argument("--export", default="",
+                    help="a file exported from the connector and saved in "
+                         "the figure folder")
+
     args = p.parse_args()
     if not os.path.isdir(args.path):
         print(f"No such directory: {args.path}", file=sys.stderr)
@@ -921,6 +1189,16 @@ def main() -> int:
                   aspect=args.aspect, supplementary=args.supplementary,
                   dry_run=args.dry_run)
         printer = print_add
+    elif args.cmd == "approve":
+        res = approve(args.path, args.figure, panel=args.panel,
+                      supplementary=args.supplementary)
+        printer = print_approve
+    elif args.cmd == "connector-record":
+        res = connector_record(args.path, args.figure, panel=args.panel,
+                               supplementary=args.supplementary,
+                               connector=args.connector, url=args.url,
+                               export=args.export)
+        printer = print_connector_record
     elif args.cmd == "geometry":
         res = geometry(args.path, args.figure,
                        supplementary=args.supplementary)

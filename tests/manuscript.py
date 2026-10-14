@@ -13418,11 +13418,54 @@ def test_figure_uploads_and_supplement(tmp: str) -> None:
     check("`supplementary --force` rebuilds it alone, manuscript untouched",
           (only["built"], only["embedded"]), (True, ["Figure S1"]))
 
+    # --- 159: a superscript citation goes after the period, in both files -
+    req_dir = os.path.join(root3, "drafts", "Langmuir", "journal_requirements")
+    csl_path = os.path.join(req_dir, "style.csl")
+    had_csl = _slurp(csl_path, "rb") if os.path.isfile(csl_path) else None
+    results_md = stfile(root3, "results.md")
+    had_results = read(results_md)
+    write(root3, "drafts/source_text/results.md", had_results
+          + "\nThe lattice was indexed as before [@jensen2019arrays].\n")
+    for form, layout in (("superscript", ' vertical-align="sup"'),
+                         ("parenthetical", ' prefix="(" suffix=")"')):
+        write_csl_style(csl_path, layout)
+        res = ms.assemble(root3, "Langmuir", force=True)
+        for name, path in (("manuscript", res["output"]),
+                           ("supplement", res["supplementary"])):
+            text = _sup_text(path)
+            if form == "superscript":
+                check("159: a superscript CSL renders text.1 in the " + name,
+                      ("as before.^1" in text, "as before^1." in text),
+                      (True, False), "; ".join(res["errors"])[:300])
+            else:
+                check("159: a parenthetical CSL is unchanged in the " + name,
+                      ("as before (1)." in text, "as before^" in text),
+                      (True, False), "; ".join(res["errors"])[:300])
+    write(root3, "drafts/source_text/results.md", had_results)
+    if had_csl is None:
+        os.remove(csl_path)
+    else:
+        with open(csl_path, "wb") as fh:
+            fh.write(had_csl)
+    ms.assemble(root3, "Langmuir", force=True)
+
     write(root3, "plan/floats/float_provenance.json",
           json.dumps({"FigS01": {"mock": True}}))
     only = ms.supplementary(root3, "Langmuir")
     check("...and holds the mock-data gate as assemble does",
           bool(only["errors"]) and "mock" in only["errors"][0], True)
+
+
+def _sup_text(path: str | None) -> str:
+    """A built .docx as plain text, with each superscript run written
+    `^<text>` so where it sits against the punctuation can be read."""
+    if not path or not os.path.isfile(path):
+        return ""
+    doc = _doc_xml(path)
+    doc = re.sub(r"<w:r>(?:(?!</w:r>).)*?<w:vertAlign w:val=\"superscript\"\s*/>"
+                 r"(?:(?!</w:r>).)*?<w:t[^>]*>([^<]*)</w:t></w:r>",
+                 r"^\1", doc, flags=re.S)
+    return re.sub(r"<[^>]+>", "", doc)
 
 
 def _doc_xml(path: str) -> str:
@@ -13882,6 +13925,24 @@ def test_items_138_to_157(tmp: str) -> None:
     mv = ms.move_passage(root, "not in any section at all", "results")
     check("145: ...and refuses a passage it cannot find exactly once",
           bool(mv["errors"]), True)
+
+
+def write_csl_style(path: str, layout_attrs: str) -> None:
+    """A numeric CSL pandoc will render with: one citation layout carrying
+    `layout_attrs`, and a bibliography of number and title."""
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write(
+            '<?xml version="1.0" encoding="utf-8"?>\n'
+            '<style xmlns="http://purl.org/net/xbiblio/csl" class="in-text" '
+            'version="1.0"><info><title>Example Numeric</title>'
+            '<id>example-numeric</id><category citation-format="numeric"/>'
+            '<updated>2026-01-01T00:00:00+00:00</updated></info>'
+            '<citation><layout%s><text variable="citation-number"/>'
+            '</layout></citation><bibliography><layout>'
+            '<text variable="citation-number" suffix=". "/>'
+            '<text variable="title"/></layout></bibliography></style>\n'
+            % layout_attrs)
 
 
 def write_raw_csl(d: str, name: str, layout_attrs: str, sup: str) -> str:

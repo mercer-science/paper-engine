@@ -437,6 +437,8 @@ What it will tell you, because each is a real trap:
 - **Art that does not exist yet is fine.** A missing panel renders as a dashed grey placeholder, so the whole figure set can be built and criticised while the art is still being drawn.
 - **Staleness is the file's SHA-256, never its modification time** — OneDrive rewrites mtimes on sync, which makes an mtime check both re-render files nobody touched and call a file current after a sync replaced it.
 
+**PowerPoint first, then BioRender.** If a BioRender connector is attached, you will be offered a BioRender version of the panel, but only after you have approved the PowerPoint draft. The draft is where the content gets settled; BioRender is where an approved layout becomes polished art. The rendered draft is handed to BioRender as the reference, every difference between its preview and your draft is pointed out to you, and you finish it in BioRender and export it into the figure folder. If you edit the PowerPoint draft afterwards, `graphic_figure.py status` marks the BioRender version **stale**, so the two cannot silently disagree. Without the connector, or if you say no, the PowerPoint figure is the finished figure. Two things stay yours to check: whether your BioRender plan covers publication, and the journal's AI-disclosure rules for generated art.
+
 `Rscript plan/render_all.R` stays the only command you run; unchanged art is skipped. After the art renders the figure still needs its caption block and a callout in the text, and both are `writing-engine`'s job — you will be told rather than having a caption written silently.
 
 ---
@@ -707,6 +709,7 @@ No skill and no agent is required for any of these. Every one takes `--json`, on
 | Has the pack moved since the brief was written? | `python tools/labpack.py brief --project "<path>" --check` |
 | Merge a settled idea into an existing project | `python tools/idea.py merge "<path>" --bundle idea.json` |
 | Panel art: add, and is it stale | `python tools/graphic_figure.py add\|status "<path>"` |
+| Panel art: approve the draft, record a BioRender version | `python tools/graphic_figure.py approve\|connector-record "<path>" --figure N` |
 
 </details>
 

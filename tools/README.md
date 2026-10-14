@@ -2295,8 +2295,8 @@ journal's pixel size and composed by the same script that draws the plotted
 panels beside it.
 
 Standard library only. Spec: `specs/setup-project-directory.md` §5.6.
-Re-measure: `python tests/graphic_figure.py` (40 checks, offline) or `--render`
-(50, drives real PowerPoint and real R).
+Re-measure: `python tests/graphic_figure.py` (86 checks, offline) or `--render`
+(drives real PowerPoint and real R).
 
 ## Commands
 
@@ -2306,7 +2306,24 @@ python tools/graphic_figure.py add    "<project>" --figure 2 [--panel A]
                                       [--width single|double|half|<inches>]
                                       [--aspect 0.75] [--supplementary] [--dry-run]
 python tools/graphic_figure.py render "<project>" [--figure 2] [--force]
+python tools/graphic_figure.py approve "<project>" --figure 2 [--panel A]
+python tools/graphic_figure.py connector-record "<project>" --figure 2 [--panel A]
+                                      --connector biorender [--url <link>]
+                                      [--export panelA_biorender.png]
 ```
+
+`approve` and `connector-record` are the order **PowerPoint first, a graphical
+connector second**. `approve` records, by the `.pptx`'s SHA-256, that the user
+approved the draft; it refuses a slide still carrying the skeleton's `[TK: ...]`
+labels. `connector-record` records a version made in a connector such as
+BioRender from that approved draft - its editor link and/or an export saved in
+the figure folder - and refuses when the draft was never approved or has
+changed since. Both live in `.connector_state.json`, apart from
+`.render_state.json`, which the R side rewrites on every render. `status`
+then reports a draft edited after approval and marks every connector version
+made from the older draft **stale**. Neither command touches the `.pptx` or
+`figure.R`; `connector-record` returns the `graphic_panel()` line that would
+compose the export, for the user to put in.
 
 `status` lists every float folder holding panel art, with each source reported
 as current, stale, or not rendered, plus the render backend this machine

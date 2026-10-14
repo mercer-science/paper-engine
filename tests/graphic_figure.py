@@ -638,8 +638,11 @@ def test_geometry():
 
         _geometry_slide(src, (3.6, 3.5, 3.6, 1.15))
         allowed = gf.render(root, 1, allow_overlap=True)
+        # Past the refusal is the claim; a machine with no R then stops at
+        # the next step, and that is a different error from this one.
         check("--allow-overlap gets past the refusal",
-              not allowed.get("error"), allowed.get("error"))
+              "collision" not in (allowed.get("error") or ""),
+              allowed.get("error"))
         check("...and the collision is still in the result rather than "
               "forgotten",
               len((allowed.get("geometry") or {}).get("collisions", [])) == 1)
@@ -666,6 +669,130 @@ def test_geometry():
         shutil.rmtree(root, ignore_errors=True)
 
 
+# ---------------------------------------------------------------------------
+# PowerPoint first, a graphical connector second
+# ---------------------------------------------------------------------------
+
+def test_connector():
+    """The order the user asked for: a PowerPoint draft, the user's approval,
+    and only then a connector version (BioRender, ...) - recorded by content
+    hash, so a draft that moves on makes the connector version stale.
+
+    No connector is called here, or anywhere in a suite (AGENTS.md,
+    Connectors): what is tested is the record, which has a right answer."""
+    section("PowerPoint first, a connector version second")
+    root, proj = new_project()
+    try:
+        gf.add(proj, 1, panel="A")
+        d = os.path.join(proj, "plan", "figures", "Fig01")
+        pptx = os.path.join(d, "panelA_source.pptx")
+
+        res = gf.connector_record(proj, 1, panel="A", connector="biorender",
+                                  url="https://example.org/fig/1")
+        check("no connector version before the draft is approved",
+              "not been approved" in (res.get("error") or ""), res)
+
+        res = gf.approve(proj, 1, panel="A")
+        check("the untouched skeleton cannot be approved",
+              "[TK:" in (res.get("error") or "")
+              and res.get("placeholders", 0) > 0, res)
+        check("...and nothing was recorded for it",
+              not os.path.exists(os.path.join(d, gf.CONNECTOR_FILE)))
+
+        drawn = mark_source(proj, pptx)
+        raw = open(pptx, "rb").read()
+        res = gf.approve(proj, 1, panel="A")
+        check("a finished draft is approved", not res.get("error"), res)
+        check("...against the draft's content hash",
+              gf.read_connector_state(d)["panelA_source.pptx"]["approved"]
+              ["sha256"] == drawn)
+        check("...and the reference image is reported missing, not assumed",
+              res.get("reference_png_current") is False, res)
+        check("approval never touches the .pptx",
+              open(pptx, "rb").read() == raw)
+
+        check("a connector name is a short slug",
+              bool(gf.connector_record(proj, 1, panel="A",
+                                       connector="Bio Render!",
+                                       url="x").get("error")))
+        check("a connector version has to say where it is",
+              bool(gf.connector_record(proj, 1, panel="A",
+                                       connector="biorender").get("error")))
+        check("an export that is not on disk is refused",
+              "does not exist" in (gf.connector_record(
+                  proj, 1, panel="A", connector="biorender",
+                  export="panelA_biorender.png").get("error") or ""))
+        check("an export outside the figure folder is refused",
+              bool(gf.connector_record(
+                  proj, 1, panel="A", connector="biorender",
+                  export="../Fig02/x.png").get("error")))
+        with open(os.path.join(d, "panelA_source.png"), "wb") as fh:
+            fh.write(b"\x89PNG\r\n\x1a\n")
+        check("the draft's own render is not a connector export",
+              "not a biorender export" in (gf.connector_record(
+                  proj, 1, panel="A", connector="biorender",
+                  export="panelA_source.png").get("error") or ""))
+
+        with open(os.path.join(d, "panelA_biorender.png"), "wb") as fh:
+            fh.write(b"\x89PNG\r\n\x1a\n")
+        res = gf.connector_record(proj, 1, panel="A", connector="biorender",
+                                  url="https://example.org/fig/1",
+                                  export="panelA_biorender.png")
+        check("a version of the approved draft is recorded",
+              not res.get("error") and res["version"]["from_sha256"] == drawn,
+              res)
+        check("...and the swap in figure.R is offered, not made",
+              res.get("compose_line", "").startswith(
+                  'graphic_panel("panelA_biorender.png"')
+              and 'tag = "A"' in res["compose_line"], res)
+        check("recording never touches the .pptx",
+              open(pptx, "rb").read() == raw)
+
+        src = gf.status(proj)["floats"][0]["sources"][0]
+        check("status: the draft is approved and the version current",
+              (src["approved"], src["changed_since_approval"],
+               [v["stale"] for v in src["connector_versions"]],
+               [v["export_present"] for v in src["connector_versions"]])
+              == (True, False, [False], [True]), src)
+
+        # The user goes back to PowerPoint after the connector version exists.
+        with open(pptx, "ab") as fh:
+            fh.write(b"edited")
+        src = gf.status(proj)["floats"][0]["sources"][0]
+        check("editing the draft afterwards is reported",
+              src["changed_since_approval"] is True, src)
+        check("...and makes the connector version stale",
+              [v["stale"] for v in src["connector_versions"]] == [True], src)
+        res = gf.connector_record(proj, 1, panel="A", connector="biorender",
+                                  url="https://example.org/fig/2")
+        check("a new version of an unapproved edit is refused",
+              "changed since it was approved" in (res.get("error") or ""),
+              res)
+        res = gf.approve(proj, 1, panel="A")
+        check("re-approving says the old version no longer matches",
+              res.get("superseded_versions") == 1, res)
+
+        os.remove(os.path.join(d, "panelA_biorender.png"))
+        src = gf.status(proj)["floats"][0]["sources"][0]
+        check("a recorded export that has gone is reported missing",
+              [v["export_present"] for v in src["connector_versions"]]
+              == [False], src)
+
+        missing = gf.approve(proj, 1, panel="C")
+        check("approving a panel with no draft says the draft comes first",
+              "comes first" in (missing.get("error") or ""), missing)
+
+        cli = subprocess.run(
+            [sys.executable, os.path.join(TOOLS, "graphic_figure.py"),
+             "connector-record", proj, "--figure", "1", "--panel", "A",
+             "--connector", "biorender", "--url", "https://example.org/x",
+             "--json"], capture_output=True, text=True, encoding="utf-8")
+        check("the CLI exits 0 on a recorded version", cli.returncode == 0,
+              cli.stdout[-300:] + cli.stderr[-300:])
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
 def main():
     want_render = "--render" in sys.argv
     print("Graphic figure suite - PowerPoint panel art in a float folder")
@@ -675,6 +802,7 @@ def main():
     test_state()
     test_never_overwritten()
     test_geometry()
+    test_connector()
 
     rscript = find_rscript()
     if not want_render:
