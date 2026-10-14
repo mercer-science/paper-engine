@@ -151,7 +151,9 @@ count as leaking, and the third is the easy one to do by accident:
   the low-salt condition is the best" is the hypothesis, however it is phrased.
 
 Hand over the brief's `prompt` and nothing else — no preamble, no summary,
-and never `subagent_type: "fork"`. If the harness cannot spawn a sub-agent
+and never `subagent_type: "fork"`. In any harness, set how much of this
+conversation the child inherits to none, by name, as the brief's `spawn` field
+says, and never rely on the default. If the harness cannot spawn a sub-agent
 with a chosen context, run it as a separate invocation with that prompt; if
 that is not possible either, skip it and say the check did not run. A
 `stats_report.md` written by an agent that has read the hypothesis is worse

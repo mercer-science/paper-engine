@@ -190,7 +190,9 @@ Harnesses differ in how to run it:
   brief's `prompt` as the whole prompt. Never with a *fork*-style sub-agent
   that inherits the parent's context — that undoes every denial while still
   reporting that a sub-agent ran, which is why the brief names it in
-  `spawn.never`.
+  `spawn.never`. The same goes for a spawn tool whose inheritance setting is
+  left at its default: in at least one harness the default is the whole
+  conversation. Set it to none, by name, as the brief's `spawn` field says.
 - **If it cannot**, run that module as a **separate session** — a fresh
   invocation whose prompt is that same `prompt` field and nothing else.
   Cheaper and equally valid.

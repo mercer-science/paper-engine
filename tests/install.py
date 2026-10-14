@@ -575,6 +575,110 @@ def test_doctor(dest):
     check("...at the same exit code as --json", code2 == code, (code2, code))
 
 
+
+def test_manifest_skills_reach_codex():
+    """specs/codex-plugin-2026-09-30.md 5: Codex reads `.claude-plugin/
+    plugin.json` itself, and its manifest reader drops a `skills` entry that
+    does not start with `./` (*"path must start with `./`"*, core-plugins
+    manifest.rs). A dropped skill is one Codex never offers, and nothing
+    says so - so the shape is held here, where it can fail."""
+    section("the manifest's skills reach Codex: every entry ./ and real")
+    manifest = json.loads(read(os.path.join(ROOT, ".claude-plugin",
+                                            "plugin.json")))
+    skills = manifest.get("skills")
+    skills = [skills] if isinstance(skills, str) else list(skills or [])
+    check("every skills entry starts with ./",
+          [e for e in skills if not str(e).startswith("./")] == [],
+          [e for e in skills if not str(e).startswith("./")])
+    check("...and names a folder with a SKILL.md in it",
+          [e for e in skills if not os.path.isfile(
+              os.path.join(ROOT, str(e)[2:], "SKILL.md"))] == [],
+          skills)
+    on_disk = sorted("./skills/" + n for n in os.listdir(
+        os.path.join(ROOT, "skills"))
+        if os.path.isfile(os.path.join(ROOT, "skills", n, "SKILL.md")))
+    check("...and lists every skill there is", sorted(skills) == on_disk,
+          (skills, on_disk))
+    # One manifest, not two (spec 0's decision). If a Codex-only manifest is
+    # ever added, it must not drift from this one.
+    codex = os.path.join(ROOT, ".codex-plugin", "plugin.json")
+    if os.path.isfile(codex):
+        other = json.loads(read(codex))
+        check("a .codex-plugin manifest agrees on name, version and skills",
+              [other.get(k) for k in ("name", "version", "skills")]
+              == [manifest.get(k) for k in ("name", "version", "skills")],
+              other)
+    else:
+        check("there is one manifest, which Codex reads",
+              not os.path.exists(os.path.join(ROOT, ".codex-plugin")), True)
+
+
+def test_doctor_codex(dest):
+    """doctor's Codex rows: optional, so they never change `ready`, and they
+    see the failure Codex itself is silent about."""
+    section("doctor - the Codex rows")
+    sandbox = tempfile.mkdtemp(prefix="doctor_codex_")
+    keep = {k: os.environ.get(k) for k in
+            ("PAPER_ENGINE_CODEX_PLUGINS_DIR", "CODEX_HOME")}
+    try:
+        codex = os.path.join(sandbox, "codex", "plugins")
+        os.environ["PAPER_ENGINE_CODEX_PLUGINS_DIR"] = codex
+        os.environ.pop("CODEX_HOME", None)
+
+        none = ins.codex_check()
+        check("no Codex install reads as not_installed, not as a failure",
+              none["state"] == "not_installed", none)
+        res = ins.doctor(dest)
+        check("doctor carries the Codex section", "codex" in res,
+              sorted(res))
+        ready_without = res["ready"]
+
+        install = os.path.join(codex, "cache", "paper-engine-marketplace",
+                               "paper-engine", "2026.9.30")
+        shutil.copytree(os.path.join(ROOT, ".claude-plugin"),
+                        os.path.join(install, ".claude-plugin"))
+        shutil.copytree(os.path.join(ROOT, "skills"),
+                        os.path.join(install, "skills"))
+        write(os.path.join(sandbox, "codex", "config.toml"),
+              '[plugins."paper-engine@paper-engine-marketplace"]\n'
+              'enabled = true\n')
+        cx = ins.codex_check()
+        check("an install found in Codex's cache is ok", cx["state"] == "ok",
+              cx)
+        check("...and every skill in the manifest is one Codex will list",
+              len(cx["skills_listed"]) == 8 and cx["skills_missing"] == [],
+              cx)
+        check("...and the enabled flag is read from config.toml",
+              cx["enabled"] is True, cx)
+        check("the Codex rows never change `ready`",
+              ins.doctor(dest)["ready"] == ready_without, ready_without)
+
+        mpath = os.path.join(install, ".claude-plugin", "plugin.json")
+        m = json.loads(read(mpath))
+        m["skills"] = ["skills/analysis"] + m["skills"][1:]
+        write(mpath, json.dumps(m))
+        cx = ins.codex_check()
+        check("an entry without ./ is named as one Codex drops",
+              cx["skills_missing"] == ["skills/analysis"]
+              and cx["state"] == "problem", cx)
+
+        write(os.path.join(sandbox, "codex", "config.toml"),
+              '[plugins."paper-engine@paper-engine-marketplace"]\n'
+              'enabled = false\n')
+        check("a plugin disabled in Codex is a problem, said as one",
+              ins.codex_check()["enabled"] is False, ins.codex_check())
+
+        _code, out, _ = run("doctor", "--dest", dest)
+        check("the text printer has a Codex row", "Codex" in out, out[-400:])
+    finally:
+        for k, v in keep.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+        shutil.rmtree(sandbox, ignore_errors=True)
+
+
 def main():
     print("install - the skill pointers, and what they refuse to overwrite")
     dest = tempfile.mkdtemp(prefix="skills_test_")
@@ -591,11 +695,13 @@ def main():
     doc_dest = tempfile.mkdtemp(prefix="skills_doctor_")
     try:
         test_doctor(doc_dest)
+        test_doctor_codex(doc_dest)
     finally:
         shutil.rmtree(doc_dest, ignore_errors=True)
     test_dry_run()
     test_pack_manifests()
     test_pack_carries_no_engine_and_engine_carries_no_lab()
+    test_manifest_skills_reach_codex()
 
     print(f"\n{PASSED}/{PASSED + FAILED} passed"
           + (f", {FAILED} FAILED" if FAILED else "")

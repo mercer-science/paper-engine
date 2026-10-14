@@ -239,9 +239,11 @@ def write(root, rel, text):
 _ENV_SANDBOX = tempfile.mkdtemp(prefix="scaffold_env_")
 os.environ["PAPER_ENGINE_HOME"] = os.path.join(_ENV_SANDBOX, "home")
 os.environ["PAPER_ENGINE_PLUGINS_DIR"] = os.path.join(_ENV_SANDBOX, "plugins")
+os.environ["PAPER_ENGINE_CODEX_PLUGINS_DIR"] = os.path.join(_ENV_SANDBOX,
+                                                            "codex", "plugins")
 os.environ["PAPER_ENGINE_TOOLKIT"] = os.path.join(_ENV_SANDBOX, "toolkit")
 for _k in ("PAPER_ENGINE_LAB_PACK", "PAPER_ENGINE_RESOURCES",
-           "CLAUDE_PLUGIN_ROOT"):
+           "CLAUDE_PLUGIN_ROOT", "CODEX_HOME"):
     os.environ.pop(_k, None)
 os.makedirs(os.environ["PAPER_ENGINE_PLUGINS_DIR"], exist_ok=True)
 os.makedirs(os.path.join(_ENV_SANDBOX, "toolkit", "resources"), exist_ok=True)

@@ -59,6 +59,14 @@ maintainer's machine and in a private notes repository; all four are
 gitignored here. The code, the skills, the help and the tests are public. A
 comment or a doc that cites `specs/<name>.md` is citing one of those notes.
 
+**2026-10-01 — the engine installs in Codex.** Measured on Codex 0.159.3:
+it reads `.claude-plugin/` unchanged and lists all eight skills. The one trap
+is sub-agents. Codex's `spawn_agent` (v2) **inherits the whole conversation
+unless `fork_turns: "none"` is passed**, so `agent-brief`'s `spawn.codex`
+names the isolating value every time, and no skill may rely on a spawn tool's
+default. The measurements are in `specs/codex-plugin-2026-09-30.md` and its
+probe.
+
 **Nothing a project contains may be written into this repository.** Not a
 sentence from a draft, not a result, not a filename, not a collaborator's
 name. An example in a skill, a test or a comment is made up for the purpose
@@ -87,11 +95,11 @@ rows.
 | `docx_edits.py` | Tracked changes and comments out of a `.docx`. Never writes one |
 | `toc_graphic.py` | The graphical abstract as an authored PowerPoint float, and the shared record of PowerPoint first, BioRender second - `connector-record --use` decides which image the generated block ships |
 | `graphic_figure.py` | PowerPoint panel art inside a figure folder, and the record of PowerPoint first, BioRender second: `approve` (the user approved this draft, by content hash) and `connector-record` (a BioRender version made from it, stale once the draft moves on) |
-| `labpack.py` | The lab resource pack and the drop-zones: which pack this copy resolves, where a member's own material may safely live (`~/.paper-engine/resources/`, which no plugin lifecycle touches), and the live inventory read — offered, never automatic, written nowhere. **No lab name appears in this engine** |
+| `labpack.py` | The lab resource pack and the drop-zones: which pack this copy resolves, where a member's own material may safely live (`~/.paper-engine/resources/`, which no plugin lifecycle touches), and the live inventory read — offered, never automatic, written nowhere. `plugin_roots()` is Claude Code's root then Codex's; the same pack in both is one pack, two different packs still ask. **No lab name appears in this engine** |
 | `release.py` | The dated version both plugins carry, the offline check that notices when one is overdue. The version check **reports, never refuses** — a commit is not a release; it uses `git log -G`, never `-S`, because `-S` counts occurrences and so finds the commit that created the version line rather than the bump. |
-| `remote.py` | **The only thing in the toolkit that reaches a network** — one `git ls-remote` per marketplace, using the member's own login, cached to `~/.paper-engine/remote-check.json`. Nothing on a drafting path calls it; `labpack.freshness()` and `release.freshness()` read the cache and stay offline, and the suite asserts that against both files' source. Built 2026-09-23 for item 116, where both checks compared two copies that came down in the same download and therefore reported `current` for ever. **`refresh` runs at the opening of all eight skills** (item 117, 2026-09-24) - once a day per repository, 6s timeout, and it prints nothing unless there is news |
+| `remote.py` | **The only thing in the toolkit that reaches a network** — one `git ls-remote` per marketplace, using the member's own login, cached to `~/.paper-engine/remote-check.json`. Nothing on a drafting path calls it; `labpack.freshness()` and `release.freshness()` read the cache and stay offline, and the suite asserts that against both files' source. Built 2026-09-23 for item 116, where both checks compared two copies that came down in the same download and therefore reported `current` for ever. **`refresh` runs at the opening of all eight skills** (item 117, 2026-09-24) - once a day per repository, 6s timeout, and it prints nothing unless there is news. Reads Codex's records too: `config.toml` for the repository, the install's own `.git/HEAD` for the commit |
 | `review.py` | The corpus a **review** is checked against: the scope contract, the recorded searches, the screening log, one record per source with the tier at which it was read, the evidence table, and the checks that hold every sentence to that tier. 12 subcommands. Stdlib only; reaches `scholar.py` through a subprocess |
-| `install_skills.py` | The pointers that make the skills findable from any directory, and **`doctor`** - the one command behind README step 4: the programs, the packages and the pointers, each with what its absence blocks. Reports; installs nothing |
+| `install_skills.py` | The pointers that make the skills findable from any directory, and **`doctor`** - the one command behind README step 4: the programs, the packages and the pointers, each with what its absence blocks, and an optional Codex section (installed, enabled, every skill listable). Reports; installs nothing |
 | `help_deck.py` | The flow-chart deck. **`build` overwrites a hand-edited file with no undo — nothing runs it except on request** |
 
 ### The Skills

@@ -193,10 +193,35 @@ def marketplace_of(path: str) -> str:
     return ""
 
 
-def known_marketplaces() -> dict:
+def known_marketplaces(host: str = "claude") -> dict:
+    """The marketplace records of one CLI, in Claude Code's shape.
+
+    Claude Code's are `known_marketplaces.json`. Codex's are the
+    `[marketplaces.<name>]` tables of its `config.toml` - measured on 0.159.3:
+    `codex plugin marketplace add mercer-science/paper-engine` records
+    `source_type = "git"`, `source = "https://github.com/mercer-science/
+    paper-engine.git"`. A GitHub URL is translated into Claude Code's
+    `{"source": "github", "repo": "org/name"}`, so `repo_of` has one shape to
+    read. Any other Git host has no `org/name` to ask about here, and is left
+    as it is.
+    """
     lp = _labpack()
     if lp is None:
         return {}
+    if host == "codex":
+        try:
+            tables = lp.codex_config().get("marketplaces")
+        except Exception:
+            return {}
+        out: dict = {}
+        for name, table in (tables if isinstance(tables, dict) else {}).items():
+            if not isinstance(table, dict):
+                continue
+            repo = github_repo(str(table.get("source") or ""))
+            out[name] = ({"source": {"source": "github", "repo": repo}}
+                         if repo and table.get("source_type") == "git"
+                         else {"source": dict(table)})
+        return out
     try:
         known = lp.read_json(os.path.join(lp.plugins_dir(),
                                           "known_marketplaces.json"))
@@ -205,13 +230,24 @@ def known_marketplaces() -> dict:
     return known if isinstance(known, dict) else {}
 
 
-def repo_of(marketplace: str) -> str:
-    """`org/name` for a marketplace, from `known_marketplaces.json`.
+_GITHUB_URL = re.compile(
+    r"^(?:https://github\.com/|git@github\.com:|ssh://git@github\.com/)"
+    r"([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+?)(?:\.git)?/?$")
+
+
+def github_repo(url: str) -> str:
+    """`org/name` out of a GitHub URL, or the empty string."""
+    m = _GITHUB_URL.match(url.strip())
+    return "%s/%s" % (m.group(1), m.group(2)) if m else ""
+
+
+def repo_of(marketplace: str, host: str = "claude") -> str:
+    """`org/name` for a marketplace, from that CLI's records.
 
     Only a `github` source yields one. A local or directory source has no
     remote to ask, which is a clean "nothing to check" rather than a failure.
     """
-    entry = known_marketplaces().get(marketplace)
+    entry = known_marketplaces(host).get(marketplace)
     if not isinstance(entry, dict):
         return ""
     source = entry.get("source")
@@ -222,10 +258,23 @@ def repo_of(marketplace: str) -> str:
     return str(source.get("repo") or "")
 
 
+def _host(path: str) -> str:
+    lp = _labpack()
+    try:
+        return (lp.host_of(path) if lp is not None else "") or "claude"
+    except Exception:
+        return "claude"
+
+
 def repo_for_path(path: str) -> str:
-    """The repository an installed copy came from, or the empty string."""
+    """The repository an installed copy came from, or the empty string.
+
+    Read from the records of the CLI whose cache holds the copy: the same
+    marketplace name can be added to both, and each CLI's answer is about its
+    own install.
+    """
     market = marketplace_of(path)
-    return repo_of(market) if market else ""
+    return repo_of(market, _host(path)) if market else ""
 
 
 def installed_sha(path: str) -> str:
@@ -234,7 +283,15 @@ def installed_sha(path: str) -> str:
     `installed_plugins.json` records `gitCommitSha` beside each install -
     measured 2026-09-23. It is the anchor the whole check turns on, and when
     it is absent the answer is `unknown`, never `current`.
+
+    Codex records no commit. What it does, measured on 0.159.3, is copy the
+    marketplace snapshot into the cache whole, `.git` included, and replace
+    that copy on every `marketplace upgrade`, so the copy's own HEAD is the
+    commit it was cut from. That is a side effect of a recursive copy and not
+    a promise, so a copy with no `.git` is `unknown` too.
     """
+    if _host(path) == "codex":
+        return git_head(path)
     lp = _labpack()
     if lp is None:
         return ""
@@ -264,13 +321,63 @@ def installed_sha(path: str) -> str:
     return ""
 
 
+_SHA = re.compile(r"^[0-9a-f]{40}$")
+
+
+def git_head(path: str) -> str:
+    """The commit `<path>/.git/HEAD` names, read as files - no git, no
+    subprocess, because `freshness()` is on the offline side of the line.
+
+    A loose ref first, then `packed-refs`. Anything else - no `.git`, a
+    `.git` file pointing elsewhere, a ref that resolves to nothing - is the
+    empty string, which every caller reads as unknown.
+    """
+    git = os.path.join(path, ".git")
+    try:
+        with open(os.path.join(git, "HEAD"), encoding="utf-8") as fh:
+            head = fh.read().strip()
+    except OSError:
+        return ""
+    if _SHA.match(head):
+        return head
+    if not head.startswith("ref: "):
+        return ""
+    ref = head[5:].strip()
+    try:
+        with open(os.path.join(git, *ref.split("/")), encoding="utf-8") as fh:
+            sha = fh.read().strip()
+        if _SHA.match(sha):
+            return sha
+    except OSError:
+        pass
+    try:
+        with open(os.path.join(git, "packed-refs"), encoding="utf-8") as fh:
+            for line in fh:
+                parts = line.split()
+                if len(parts) == 2 and parts[1] == ref and _SHA.match(parts[0]):
+                    return parts[0]
+    except OSError:
+        pass
+    return ""
+
+
+def no_sha_reason(path: str) -> str:
+    """Why `installed_sha` came back empty, in the words of that CLI."""
+    if _host(path) == "codex":
+        return ("this Codex install carries no .git to say which commit it "
+                "was cut from")
+    return "the plugin index does not record which commit this copy was cut from"
+
+
 def installed_repos() -> list:
-    """Every github-sourced marketplace on this machine, deduplicated."""
+    """Every github-sourced marketplace on this machine, in either CLI,
+    deduplicated."""
     out: list = []
-    for market in sorted(known_marketplaces()):
-        repo = repo_of(market)
-        if repo and repo not in out:
-            out.append(repo)
+    for host in ("claude", "codex"):
+        for market in sorted(known_marketplaces(host)):
+            repo = repo_of(market, host)
+            if repo and repo not in out:
+                out.append(repo)
     return out
 
 
