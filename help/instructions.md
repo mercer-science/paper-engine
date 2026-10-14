@@ -480,7 +480,7 @@ Two things are worth knowing about it. **Nothing is lost that was written down**
 | `final-check` | Reads back what the other checks wrote. The one module that is *supposed* to see everything. |
 | `submission-package` | The five (or six) files a journal wants alongside the manuscript. |
 | `respond-to-reviewers` | The response letter, written from the edit ledger. |
-| `toc-graphic` | The graphical abstract, as a PowerPoint slide you draw. |
+| `toc-graphic` | The graphical abstract, as a PowerPoint slide you draw. Once you approve the draft, a BioRender version can be made from it, and the one you choose is the one the manuscript carries. |
 
 🔹 runs as its own agent  🔸 runs **blind**
 

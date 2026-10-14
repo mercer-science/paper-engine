@@ -1206,6 +1206,9 @@ python <tools>/toc_graphic.py scaffold "<project>" --journal LANGMUIR --suggesti
 python <tools>/toc_graphic.py examples "<project>" --journal LANGMUIR --json
 python <tools>/toc_graphic.py render   "<project>" --journal LANGMUIR
 python <tools>/toc_graphic.py wire     "<project>" --journal LANGMUIR
+python <tools>/toc_graphic.py approve  "<project>" --journal LANGMUIR --json
+python <tools>/toc_graphic.py connector-record "<project>" --journal LANGMUIR \
+    --connector biorender --url "<editor link>" --export toc_graphic_biorender.png --use
 ```
 
 Most journals require one, they all size it differently, and it is the one
@@ -1373,6 +1376,34 @@ a broken image and pandoc does that without complaining.
 
 If the user deletes the markers, that is an opt-out. Say so once; do not put
 them back every round.
+
+#### PowerPoint first, then BioRender
+
+The same order as drawn figure panels, and for the same reason: **the
+PowerPoint draft settles what the graphic says; BioRender polishes a layout the
+user has already approved.** `create-graphic-figure`'s steps 6-11 are the
+procedure and are not repeated here. What differs for the graphical abstract:
+
+- **Approve** with `toc_graphic.py approve` once the user says the rendered
+  draft is right. It refuses a slide still carrying `[TK: ...]` labels.
+- **Offer BioRender once**, only if a BioRender connector is attached. Use the
+  rendered draft as the canvas context, hold the preview to the draft and tell
+  the user every difference, and let them finish and export it into the
+  graphic's folder.
+- **The block follows the choice, not a hand edit.** The block is derived and
+  regenerated every round, so pointing it at the BioRender file by hand is
+  undone on the next one. `connector-record ... --use` records the version
+  *that ships*, and the block is re-wired to point at its export. A chosen
+  export that goes missing falls back to the PowerPoint render, and `status`
+  says so (`connector_export_missing`).
+- **A draft edited after approval** makes the shipping BioRender version stale
+  (`connector_version_stale`). Ask which is right now; never ship the two
+  disagreeing.
+- Publication terms and AI disclosure are the user's to settle, as in
+  `create-graphic-figure` step 11 - a graphical abstract is published art.
+
+Without the connector, or on a no, the PowerPoint render is the graphical
+abstract and nothing else changes.
 
 #### The check that earns its place
 

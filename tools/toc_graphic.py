@@ -1151,6 +1151,168 @@ def write_r_script(path: str, spec: dict, stem: str) -> str:
 # staleness - spec 7.2.6
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# PowerPoint first, a graphical connector second
+# ---------------------------------------------------------------------------
+# A connector such as BioRender draws better art than a layout skeleton, and it
+# is still a connector: the skill has to finish its whole job without one
+# (AGENTS.md, Connectors rule 3). So the .pptx stays the draft until the user
+# approves it, and a connector version is made only from an approved draft.
+# Which draft that was, and whether a connector version still matches it, has a
+# right answer - a content hash - so it is here and not in a skill's sentence.
+# graphic_figure.py keeps the same record in a figure folder through these.
+
+# Kept apart from STATE_FILE on purpose: the R side rewrites that one on every
+# render, and an approval it did not know about would not survive.
+CONNECTOR_FILE = ".connector_state.json"
+CONNECTOR_RE = re.compile(r"^[a-z][a-z0-9-]{1,30}$")
+TK_RE = re.compile(rb"\[TK:")
+
+
+def read_connector_state(float_path: str) -> dict:
+    try:
+        with open(os.path.join(float_path, CONNECTOR_FILE), "r",
+                  encoding="utf-8") as fh:
+            data = json.load(fh)
+        return data if isinstance(data, dict) else {}
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def _write_connector_state(float_path: str, data: dict) -> None:
+    with open(os.path.join(float_path, CONNECTOR_FILE), "w",
+              encoding="utf-8", newline="\n") as fh:
+        json.dump(data, fh, indent=2, ensure_ascii=False)
+        fh.write("\n")
+
+
+def unresolved_placeholders(pptx: str) -> int:
+    """How many `[TK: ...]` labels the slides still carry.
+
+    A slide still holding the skeleton's placeholders is the form, not the
+    answer, and approving it would hand a connector "[TK: starting point]" as
+    though someone had chosen it."""
+    import zipfile
+    try:
+        with zipfile.ZipFile(pptx) as z:
+            return sum(len(TK_RE.findall(z.read(n)))
+                       for n in z.namelist()
+                       if re.match(r"ppt/slides/slide\d+\.xml$", n))
+    except (OSError, zipfile.BadZipFile, KeyError):
+        return -1
+
+
+def connector_state(float_path: str, source: str) -> dict:
+    """Has the draft been approved, and is each connector version current?
+
+    `changed_since_approval` is the PowerPoint draft moving on after the user
+    approved it; a connector version made from the older draft is then
+    `stale`, because it no longer shows what the draft shows."""
+    rec = read_connector_state(float_path).get(source, {})
+    digest = _sha256(os.path.join(float_path, source))
+    appr = rec.get("approved") or {}
+    approved = bool(appr.get("sha256"))
+    versions = []
+    for v in rec.get("versions", []):
+        export = v.get("export", "")
+        versions.append(dict(
+            v, stale=v.get("from_sha256") != digest,
+            export_present=bool(export) and os.path.isfile(
+                os.path.join(float_path, export))))
+    return {"approved": approved,
+            "approved_at": appr.get("at", ""),
+            "changed_since_approval": approved and appr["sha256"] != digest,
+            "connector_versions": versions}
+
+
+def approve_source(dirpath: str, source: str, rel: str, reference_png: str,
+                   reference_current: bool) -> dict:
+    """Record the user's approval of `source` in `dirpath`, by content hash."""
+    pptx = os.path.join(dirpath, source)
+    tk = unresolved_placeholders(pptx)
+    if tk < 0:
+        return {"error": f"{rel}/{source} could not be read as a .pptx"}
+    if tk:
+        return {"error": (f"{rel}/{source} still carries {tk} [TK: ...] "
+                          f"placeholder(s) from the skeleton. A draft with the "
+                          f"template's labels in it is not a draft anyone "
+                          f"approved - finish it in PowerPoint first."),
+                "placeholders": tk}
+    data = read_connector_state(dirpath)
+    rec = data.setdefault(source, {})
+    rec["approved"] = {"sha256": _sha256(pptx),
+                       "at": datetime.datetime.now().isoformat(
+                           timespec="seconds")}
+    rec.setdefault("versions", [])
+    _write_connector_state(dirpath, data)
+    return {"dir": rel, "source": source,
+            "approved_at": rec["approved"]["at"],
+            # The rendered draft is what a connector is shown as a visual
+            # reference. A stale or missing one would show it the wrong art.
+            "reference_png": reference_png,
+            "reference_png_current": reference_current,
+            "superseded_versions": sum(
+                1 for v in rec["versions"]
+                if v.get("from_sha256") != rec["approved"]["sha256"])}
+
+
+def record_source(dirpath: str, source: str, rel: str, own_renders: list,
+                  connector: str, url: str = "", export: str = "",
+                  use: bool = False) -> dict:
+    """Record a connector version of the approved `source`.
+
+    Refuses when there is no approval, and when the .pptx has changed since
+    it was approved - the version would then be recorded as made from a draft
+    nobody approved. `use` marks it as the version that ships, for a caller
+    whose build reads this record (the graphical abstract)."""
+    connector = (connector or "").strip().lower()
+    if not CONNECTOR_RE.match(connector):
+        return {"error": "--connector is a short lowercase name, such as "
+                         "biorender"}
+    if not (url or export):
+        return {"error": "say where the connector version is: --url (its "
+                         "editor link) and/or --export (a file saved into "
+                         "the same folder as the draft)"}
+    if use and not export:
+        return {"error": "--use needs --export: what ships is a file"}
+    st = connector_state(dirpath, source)
+    if not st["approved"]:
+        return {"error": (f"{rel}/{source} has not been approved. The "
+                          f"PowerPoint draft comes first: show it to the "
+                          f"user, and run `approve` only once they say it is "
+                          f"right.")}
+    if st["changed_since_approval"]:
+        return {"error": (f"{rel}/{source} has changed since it was "
+                          f"approved ({st['approved_at']}). Show the user "
+                          f"the current draft and `approve` it again before "
+                          f"recording a {connector} version of it.")}
+    if export:
+        full = os.path.abspath(os.path.join(dirpath, export))
+        if os.path.dirname(full) != os.path.abspath(dirpath):
+            return {"error": f"--export names a file in {rel}/ itself, "
+                             f"not {export!r}"}
+        if not os.path.isfile(full):
+            return {"error": f"{rel}/{export} does not exist - save the "
+                             f"export there first"}
+        name = os.path.basename(full)
+        if name.lower().endswith(".pptx") or name in own_renders:
+            return {"error": f"{export} is the PowerPoint draft or its "
+                             f"render, not a {connector} export"}
+        export = name
+    data = read_connector_state(dirpath)
+    rec = data.setdefault(source, {})
+    version = {"connector": connector, "url": url, "export": export,
+               "from_sha256": rec["approved"]["sha256"],
+               "at": datetime.datetime.now().isoformat(timespec="seconds")}
+    if use:
+        for v in rec.get("versions", []):
+            v.pop("in_use", None)
+        version["in_use"] = True
+    rec.setdefault("versions", []).append(version)
+    _write_connector_state(dirpath, data)
+    return {"dir": rel, "source": source, "version": version}
+
+
 def read_state(p: dict) -> dict:
     try:
         return json.loads(_read(p["state"]) or "{}")
@@ -1205,10 +1367,27 @@ def _rel_from_section(section_path: str, png_path: str) -> str:
     return rel.replace(os.sep, "/")
 
 
+def shipped_image(p: dict) -> dict:
+    """The image the manuscript carries: the connector version the user chose
+    with `connector-record --use`, or else the PowerPoint render.
+
+    A chosen version whose export has gone falls back to the render, and says
+    so - a block pointing at a missing file builds a .docx with a broken image
+    and pandoc does not complain."""
+    source = os.path.basename(p["pptx"])
+    st = connector_state(p["root"], source)
+    chosen = next((v for v in reversed(st["connector_versions"])
+                   if v.get("in_use")), None)
+    if chosen and chosen["export_present"]:
+        return {"png": os.path.join(p["root"], chosen["export"]),
+                "version": chosen, "fallback": False}
+    return {"png": p["png"], "version": chosen, "fallback": bool(chosen)}
+
+
 def render_block(p: dict) -> str:
     spec = p["spec"]
     label = spec["label"] or spec["term"]
-    rel = _rel_from_section(p["section"], p["png"])
+    rel = _rel_from_section(p["section"], shipped_image(p)["png"])
     return (
         f"{BEGIN_MARK}\n"
         f"<!-- Derived. Regenerated every round from the current geometry and "
@@ -1222,7 +1401,7 @@ def render_block(p: dict) -> str:
 
 def wire(p: dict, force: bool = False) -> dict:
     """Write or refresh the generated block. Never touches anything outside it."""
-    if not os.path.isfile(p["png"]) and not force:
+    if not os.path.isfile(shipped_image(p)["png"]) and not force:
         return {"wired": False, "reason":
                 "no .png to point at yet - a block referencing a file that "
                 "does not exist builds a .docx with a broken image in it, and "
@@ -2005,6 +2184,23 @@ def status(project: str, journal: str) -> dict:
             "the render is current but %stoc_graphic.md does not carry the "
             "generated block - run `toc_graphic.py wire`" % stpfx(project),
             stpfx(project) + "toc_graphic.md")
+    # PowerPoint first, a connector second: what ships, and whether it still
+    # shows what the approved draft shows.
+    cs = connector_state(p["root"], os.path.basename(p["pptx"]))
+    ship = shipped_image(p)
+    res["connector"] = dict(cs, shipping=os.path.relpath(
+        ship["png"], project).replace(os.sep, "/"))
+    if ship["fallback"]:
+        add("gap", "connector_export_missing",
+            f"the {ship['version']['connector']} version chosen to ship "
+            f"({ship['version']['export']}) is not in {res['folder']}/, so "
+            f"the PowerPoint render ships instead", res["folder"])
+    elif ship["version"] and ship["version"]["stale"]:
+        add("gap", "connector_version_stale",
+            f"the {ship['version']['connector']} version that ships was made "
+            f"from an older draft - the .pptx has changed since. Ask which is "
+            f"right now: update the {ship['version']['connector']} version, "
+            f"or undo the edit", res["folder"])
     if spec["must_differ_from_figures"]:
         add("note", "must_differ_from_figures",
             f"{journal} does not allow the graphic to repeat a manuscript "
@@ -2168,6 +2364,43 @@ def render(project: str, journal: str, timeout: int = 240) -> dict:
 # printing
 # ---------------------------------------------------------------------------
 
+def approve(project: str, journal: str) -> dict:
+    """Record that the user approved the PowerPoint draft of the graphic."""
+    p = paths(project, journal)
+    rel = os.path.relpath(p["root"], project).replace(os.sep, "/")
+    if not os.path.isfile(p["pptx"]):
+        return {"error": (f"no {rel}/{os.path.basename(p['pptx'])}. The "
+                          f"PowerPoint draft comes first: `scaffold` it, "
+                          f"draw it, then approve it.")}
+    st = render_state(p)
+    return approve_source(p["root"], os.path.basename(p["pptx"]), rel,
+                          f"{rel}/{os.path.basename(p['png'])}",
+                          st["verdict"] == "current")
+
+
+def connector_record(project: str, journal: str, connector: str,
+                     url: str = "", export: str = "",
+                     use: bool = False) -> dict:
+    """Record a connector version of the approved draft; `use` ships it."""
+    p = paths(project, journal)
+    rel = os.path.relpath(p["root"], project).replace(os.sep, "/")
+    if not os.path.isfile(p["pptx"]):
+        return {"error": f"no {rel}/{os.path.basename(p['pptx'])} - the "
+                         f"PowerPoint draft comes first"}
+    res = record_source(p["root"], os.path.basename(p["pptx"]), rel,
+                        [os.path.basename(p["png"])], connector, url, export,
+                        use)
+    if res.get("error") or not use:
+        return res
+    # The block in source_text/ is derived, so it is the block that follows
+    # the choice - re-wired here when it exists, never written when it does
+    # not (wiring is its own decision).
+    res["wire"] = wire(p) if block_present(p) else {
+        "wired": False, "reason": "no generated block yet - run "
+                                  "`toc_graphic.py wire`"}
+    return res
+
+
 def print_status(res: dict) -> None:
     print(f"  {res['summary']}")
     if res.get("state") in ("not_required",):
@@ -2242,6 +2475,27 @@ def main() -> int:
     rd.add_argument("--journal", required=True)
     rd.add_argument("--timeout", type=int, default=240)
 
+    ap = sub.add_parser("approve", parents=[common],
+                        help="record that the user approved the PowerPoint "
+                             "draft - the step before any connector version")
+    ap.add_argument("project")
+    ap.add_argument("--journal", required=True)
+
+    cr = sub.add_parser("connector-record", parents=[common],
+                        help="record a connector version (BioRender, ...) of "
+                             "the approved draft")
+    cr.add_argument("project")
+    cr.add_argument("--journal", required=True)
+    cr.add_argument("--connector", required=True,
+                    help="short lowercase name, such as biorender")
+    cr.add_argument("--url", default="", help="the version's editor link")
+    cr.add_argument("--export", default="",
+                    help="a file exported from the connector and saved in the "
+                         "graphic's folder")
+    cr.add_argument("--use", action="store_true",
+                    help="ship this version: the generated block points at "
+                         "the export instead of the PowerPoint render")
+
     w = sub.add_parser("wire", parents=[common],
                        help="write or refresh the block in source_text/")
     w.add_argument("project")
@@ -2313,6 +2567,31 @@ def main() -> int:
                   f"via {res['backend']}"
                   + ("" if res["changed"] else "  (unchanged)"))
         return 2 if res["errors"] else 0
+
+    if args.cmd in ("approve", "connector-record"):
+        if args.cmd == "approve":
+            res = approve(args.project, args.journal)
+        else:
+            res = connector_record(args.project, args.journal, args.connector,
+                                   args.url, args.export, args.use)
+        if as_json:
+            print(json.dumps(res, indent=2, ensure_ascii=False))
+        elif res.get("error"):
+            print(f"  {res['error']}")
+        elif args.cmd == "approve":
+            print(f"  approved   {res['dir']}/{res['source']}  "
+                  f"({res['approved_at']})")
+            if not res["reference_png_current"]:
+                print(f"  {res['reference_png']} is missing or stale - render "
+                      f"first if a connector is to be shown the draft")
+        else:
+            v = res["version"]
+            print(f"  recorded   a {v['connector']} version of "
+                  f"{res['dir']}/{res['source']}"
+                  + ("  - it ships" if v.get("in_use") else ""))
+            if res.get("wire"):
+                print(f"  block      {res['wire'].get('action') or res['wire'].get('reason')}")
+        return 2 if res.get("error") else 0
 
     if args.cmd == "wire":
         res = wire(paths(args.project, args.journal), args.force)

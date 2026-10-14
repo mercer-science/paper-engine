@@ -757,6 +757,84 @@ def test_wire() -> None:
               "guess" in r["reason"], r["reason"])
 
 
+def test_connector() -> None:
+    """PowerPoint first, a connector (BioRender) second, for the graphical
+    abstract: approval by content hash, and the generated block following the
+    version the user chose to ship. No connector is called."""
+    with tempfile.TemporaryDirectory() as tmp:
+        proj, p = scaffolded(tmp)
+        r = tg.approve(proj, "Langmuir")
+        check("the [TK] skeleton cannot be approved",
+              "[TK:" in (r.get("error") or ""), str(r))
+        r = tg.connector_record(proj, "Langmuir", "biorender",
+                                url="https://example.org/g")
+        check("no connector version before approval",
+              "not been approved" in (r.get("error") or ""), str(r))
+
+        tg.write_pptx(p["pptx"], p["spec"],
+                      {"title": "Ordered Arrays at 30 C", "stages": [],
+                       "footnote": ""})
+        drawn = tg._sha256(p["pptx"])
+        r = tg.approve(proj, "Langmuir")
+        check("a finished draft is approved", not r.get("error"), str(r))
+        eq("approval never touches the .pptx", tg._sha256(p["pptx"]), drawn)
+
+        with open(p["png"], "wb") as fh:
+            fh.write(b"\x89PNG\r\n\x1a\n")
+        tg.wire(p)
+        exp = os.path.join(p["root"], "toc_graphic_biorender.png")
+        with open(exp, "wb") as fh:
+            fh.write(b"\x89PNG\r\n\x1a\n")
+        r = tg.connector_record(proj, "Langmuir", "biorender",
+                                url="https://example.org/g",
+                                export="toc_graphic.png", use=True)
+        check("the draft's own render is not a connector export",
+              "not a biorender export" in (r.get("error") or ""), str(r))
+        check("--use without an export is refused",
+              bool(tg.connector_record(proj, "Langmuir", "biorender",
+                                       url="x", use=True).get("error")))
+
+        r = tg.connector_record(proj, "Langmuir", "biorender",
+                                url="https://example.org/g",
+                                export="toc_graphic_biorender.png", use=True)
+        check("a chosen version is recorded", not r.get("error"), str(r))
+        eq("...and re-wires the existing block",
+           (r.get("wire") or {}).get("action"), "refreshed")
+        text = _slurp(p["section"], encoding="utf-8")
+        check("the manuscript now carries the BioRender export",
+              "toc_graphic_biorender.png" in text
+              and "toc_graphic.png)" not in text, text)
+
+        st = tg.status(proj, "Langmuir")
+        rules = [f["rule"] for f in st["findings"]]
+        check("status names what ships",
+              st["connector"]["shipping"].endswith(
+                  "toc_graphic_biorender.png"), str(st.get("connector")))
+        check("...with nothing stale to report",
+              "connector_version_stale" not in rules, str(rules))
+
+        tg.write_pptx(p["pptx"], p["spec"],
+                      {"title": "Ordered Arrays at 40 C", "stages": [],
+                       "footnote": ""})
+        rules = [f["rule"] for f in tg.status(proj, "Langmuir")["findings"]]
+        check("editing the draft makes the shipping version stale",
+              "connector_version_stale" in rules, str(rules))
+
+        os.remove(exp)
+        ship = tg.shipped_image(p)
+        check("a chosen export that has gone falls back to the render",
+              ship["fallback"] is True and ship["png"] == p["png"], str(ship))
+        rules = [f["rule"] for f in tg.status(proj, "Langmuir")["findings"]]
+        check("...and says so", "connector_export_missing" in rules,
+              str(rules))
+        tg.wire(p)
+        check("...and the block points back at the render",
+              "toc_graphic.png)" in _slurp(p["section"], encoding="utf-8"))
+
+        code, _out = _cli("approve", proj, "--journal", "Langmuir", "--json")
+        eq("the CLI approves the edited draft", code, 0)
+
+
 def test_wire_full_layout_path() -> None:
     """The relative path has to be right from drafts/source_text/ too."""
     with tempfile.TemporaryDirectory() as tmp:
@@ -1522,6 +1600,7 @@ def main() -> int:
         ("the .pptx is never overwritten", test_never_overwrites),
         ("staleness by content hash", test_staleness),
         ("the generated block", test_wire),
+        ("PowerPoint first, a connector second", test_connector),
         ("the block's path in a full layout", test_wire_full_layout_path),
         ("the render script", test_r_script),
         ("real R parses it", test_r_syntax),

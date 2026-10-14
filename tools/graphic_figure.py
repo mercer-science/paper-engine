@@ -49,7 +49,6 @@ in `status` - whether either has fallen behind the .pptx since.
 from __future__ import annotations
 
 import argparse
-import datetime
 import hashlib
 import importlib.util
 import json
@@ -71,10 +70,6 @@ for _stream in (sys.stdout, sys.stderr):
 HERE = os.path.dirname(os.path.abspath(__file__))
 TEMPLATE_DIR = os.path.join(HERE, "project_template")
 STATE_FILE = ".render_state.json"
-# Kept apart from STATE_FILE on purpose: plan/theme/render_pptx.R rewrites that
-# one on every render, and an approval it did not know about would not survive.
-CONNECTOR_FILE = ".connector_state.json"
-CONNECTOR_RE = re.compile(r"^[a-z][a-z0-9-]{1,30}$")
 PANELS_SCRIPT = "panels.R"
 
 
@@ -772,63 +767,13 @@ def render(root: str, number: int | None = None, force: bool = False,
 # the connector version still matches it, has a right answer - so it is here,
 # as a content hash, and not in a sentence of the skill's that nobody re-reads.
 
-TK_RE = re.compile(rb"\[TK:")
-
-
-def read_connector_state(float_path: str) -> dict:
-    try:
-        with open(os.path.join(float_path, CONNECTOR_FILE), "r",
-                  encoding="utf-8") as fh:
-            data = json.load(fh)
-        return data if isinstance(data, dict) else {}
-    except (OSError, json.JSONDecodeError):
-        return {}
-
-
-def _write_connector_state(float_path: str, data: dict) -> None:
-    with open(os.path.join(float_path, CONNECTOR_FILE), "w",
-              encoding="utf-8", newline="\n") as fh:
-        json.dump(data, fh, indent=2, ensure_ascii=False)
-        fh.write("\n")
-
-
-def unresolved_placeholders(pptx: str) -> int:
-    """How many `[TK: ...]` labels the slides still carry.
-
-    A slide still holding the skeleton's placeholders is the form, not the
-    answer, and approving it would hand a connector "[TK: starting point]" as
-    though someone had chosen it."""
-    import zipfile
-    try:
-        with zipfile.ZipFile(pptx) as z:
-            return sum(len(TK_RE.findall(z.read(n)))
-                       for n in z.namelist()
-                       if re.match(r"ppt/slides/slide\d+\.xml$", n))
-    except (OSError, zipfile.BadZipFile, KeyError):
-        return -1
-
-
-def connector_state(float_path: str, source: str) -> dict:
-    """Has the draft been approved, and is each connector version current?
-
-    `changed_since_approval` is the PowerPoint draft moving on after the user
-    approved it; a connector version made from the older draft is then
-    `stale`, because it no longer shows what the draft shows."""
-    rec = read_connector_state(float_path).get(source, {})
-    digest = _sha256(os.path.join(float_path, source))
-    appr = rec.get("approved") or {}
-    approved = bool(appr.get("sha256"))
-    versions = []
-    for v in rec.get("versions", []):
-        export = v.get("export", "")
-        versions.append(dict(
-            v, stale=v.get("from_sha256") != digest,
-            export_present=bool(export) and os.path.isfile(
-                os.path.join(float_path, export))))
-    return {"approved": approved,
-            "approved_at": appr.get("at", ""),
-            "changed_since_approval": approved and appr["sha256"] != digest,
-            "connector_versions": versions}
+# The record itself lives in toc_graphic.py, the lower of the two engines,
+# because the graphical abstract keeps the same record in its own folder - one
+# implementation, two callers.
+CONNECTOR_FILE = _toc.CONNECTOR_FILE
+read_connector_state = _toc.read_connector_state
+unresolved_placeholders = _toc.unresolved_placeholders
+connector_state = _toc.connector_state
 
 
 def _resolve_source(root: str, number: int, panel: str,
@@ -856,35 +801,13 @@ def approve(root: str, number: int, panel: str = "",
     fl, source, err = _resolve_source(root, number, panel, supplementary)
     if err:
         return {"error": err}
-    pptx = os.path.join(fl["path"], source)
-    tk = unresolved_placeholders(pptx)
-    if tk < 0:
-        return {"error": f"{fl['rel']}/{source} could not be read as a .pptx"}
-    if tk:
-        return {"error": (f"{fl['rel']}/{source} still carries {tk} "
-                          f"[TK: ...] placeholder(s) from the skeleton. A "
-                          f"draft with the template's labels in it is not a "
-                          f"draft anyone approved - finish it in PowerPoint "
-                          f"first."),
-                "placeholders": tk}
     rs = source_state(fl["path"], source)
-    data = read_connector_state(fl["path"])
-    rec = data.setdefault(source, {})
-    rec["approved"] = {"sha256": _sha256(pptx),
-                       "at": datetime.datetime.now().isoformat(
-                           timespec="seconds")}
-    rec.setdefault("versions", [])
-    _write_connector_state(fl["path"], data)
-    return {"path": os.path.abspath(root), "label": fl["label"],
-            "dir": fl["rel"], "source": source,
-            "approved_at": rec["approved"]["at"],
-            # The rendered draft is what a connector is shown as a visual
-            # reference. A stale or missing one would show it the wrong art.
-            "reference_png": f"{fl['rel']}/{source[:-5]}.png",
-            "reference_png_current": rs["rendered"] and not rs["stale"],
-            "superseded_versions": sum(
-                1 for v in rec["versions"]
-                if v.get("from_sha256") != rec["approved"]["sha256"])}
+    res = _toc.approve_source(fl["path"], source, fl["rel"],
+                              f"{fl['rel']}/{source[:-5]}.png",
+                              rs["rendered"] and not rs["stale"])
+    if res.get("error"):
+        return res
+    return dict(res, path=os.path.abspath(root), label=fl["label"])
 
 
 def connector_record(root: str, number: int, panel: str = "",
@@ -895,57 +818,22 @@ def connector_record(root: str, number: int, panel: str = "",
     Refuses when there is no approval, and when the .pptx has changed since
     it was approved - the connector version would then be recorded as made
     from a draft nobody approved."""
-    connector = (connector or "").strip().lower()
-    if not CONNECTOR_RE.match(connector):
-        return {"error": "--connector is a short lowercase name, such as "
-                         "biorender"}
-    if not (url or export):
-        return {"error": "say where the connector version is: --url (its "
-                         "editor link) and/or --export (a file saved into "
-                         "the figure folder)"}
     fl, source, err = _resolve_source(root, number, panel, supplementary)
     if err:
         return {"error": err}
-    st = connector_state(fl["path"], source)
-    if not st["approved"]:
-        return {"error": (f"{fl['rel']}/{source} has not been approved. The "
-                          f"PowerPoint draft comes first: show it to the "
-                          f"user, and run `approve` only once they say it is "
-                          f"right.")}
-    if st["changed_since_approval"]:
-        return {"error": (f"{fl['rel']}/{source} has changed since it was "
-                          f"approved ({st['approved_at']}). Show the user "
-                          f"the current draft and `approve` it again before "
-                          f"recording a {connector} version of it.")}
-    if export:
-        full = os.path.abspath(os.path.join(fl["path"], export))
-        if os.path.dirname(full) != os.path.abspath(fl["path"]):
-            return {"error": f"--export names a file in {fl['rel']}/ itself, "
-                             f"not {export!r}"}
-        if not os.path.isfile(full):
-            return {"error": f"{fl['rel']}/{export} does not exist - save the "
-                             f"export there first"}
-        if SOURCE_RE.match(os.path.basename(full)) or full.endswith(
-                source[:-5] + ".png"):
-            return {"error": f"{export} is the PowerPoint draft or its "
-                             f"render, not a {connector} export"}
-        export = os.path.basename(full)
-    data = read_connector_state(fl["path"])
-    rec = data.setdefault(source, {})
-    version = {"connector": connector, "url": url, "export": export,
-               "from_sha256": rec["approved"]["sha256"],
-               "at": datetime.datetime.now().isoformat(timespec="seconds")}
-    rec.setdefault("versions", []).append(version)
-    _write_connector_state(fl["path"], data)
+    res = _toc.record_source(fl["path"], source, fl["rel"],
+                             [source[:-5] + ".png"], connector, url, export)
+    if res.get("error"):
+        return res
     line = ""
-    if export:
+    if res["version"]["export"]:
         tag = panel_letter(source)
-        line = (f'graphic_panel("{export}", title = "[TK: panel title]"'
+        line = (f'graphic_panel("{res["version"]["export"]}", '
+                f'title = "[TK: panel title]"'
                 + (f', tag = "{tag}")' if tag else ")"))
-    return {"path": os.path.abspath(root), "label": fl["label"],
-            "dir": fl["rel"], "source": source, "version": version,
-            # figure.R is the user's: the swap is offered, never made.
-            "compose_line": line}
+    # figure.R is the user's: the swap is offered, never made.
+    return dict(res, path=os.path.abspath(root), label=fl["label"],
+                compose_line=line)
 
 
 def _r_str(s: str) -> str:

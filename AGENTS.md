@@ -346,8 +346,9 @@ order: PowerPoint first.** Drawn art is drafted as the PowerPoint panel
 `create-graphic-figure` writes, the user approves the rendered draft, and only
 then is a BioRender version offered - made from the approved draft as its
 reference, compared back against it with every difference told to the user,
-and recorded with `graphic_figure.py connector-record`, which refuses a draft
-that was never approved or has changed since. The PowerPoint figure is complete
+and recorded with `graphic_figure.py connector-record` (`toc_graphic.py
+connector-record` for the graphical abstract), which refuses a draft that was
+never approved or has changed since. The PowerPoint figure is complete
 without the connector (rule 3). It is offered for **drawn art only**: a plotted
 panel is drawn from the data by `figure.R`, and a redrawn chart is a chart
 nobody can re-derive.
@@ -482,7 +483,7 @@ python tests/sequence.py       # 100 checks, offline; a stub HTTP server.
                                #    Its payloads are CONSTRUCTED to the
                                #    documented shapes, not captured - said
                                #    in the suite's own docstring
-python tests/toc_graphic.py    # 312 checks offline; --render drives a real
+python tests/toc_graphic.py    # 327 checks offline; --render drives a real
                                #   PowerPoint/LibreOffice export (319 with it)
 python tests/graphic_figure.py # 86 checks offline; --render drives real
                                #   PowerPoint and real R (72 with it). The
