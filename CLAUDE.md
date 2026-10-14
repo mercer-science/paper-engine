@@ -113,12 +113,13 @@ modules and are still callable standalone.
 
 ### What Was Last Measured
 
-**2026-10-12, after items 158, 164 and 165.** Offline suites on Python
-3.12 with pandoc 3.1.3 and the optional packages, no R (manuscript and
-portability re-run on 3.14 that day): manuscript **2748**, portability **1236**, scaffold **574**
-(6 skipped; the 12 checks of the old sync gone, 36 for the offer added),
-labpack **359**, prose 475, learn 259, install 190, idea 192, review 161,
-docx_edits 107, help_deck 118. Run the suites `AGENTS.md` names before
+**2026-10-14, after BioRender and the Codex and drop-folder merges.** Offline
+suites on Python 3.13 with pandoc 3.1.3 and the optional packages, no R:
+manuscript **2757** (1 skipped), portability **1249**, scaffold **594**
+(6 skipped), labpack **389**, toc_graphic **327**, graphic_figure **86**
+(1 skipped), install 219 (1 skipped), idea 200 (1 skipped), structure 197,
+prose 475, learn 259, review 161, help_deck 118, docx_edits 107, sequence
+100, cite 54 (1 skipped). `pyright`: 0 errors, 0 warnings. Run the suites `AGENTS.md` names before
 claiming a change is done.
 
 **2026-10-01, after `scaffold.py drop`** (Linux, Python 3.12, pandoc 3.9, no

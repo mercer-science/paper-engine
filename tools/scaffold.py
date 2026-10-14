@@ -514,7 +514,7 @@ def print_drop(res: dict) -> None:
 
 
 def offers_for(expects: str, paper_kind: str = "research",
-               dropped: frozenset | set | list = ()) -> dict:
+               dropped: frozenset | set | list | tuple = ()) -> dict:
     """What setup-project-directory may offer to build, given the expectation.
 
     The policy lives here rather than in the skill for the reason every other
