@@ -1084,19 +1084,27 @@ The user's standing instruction, and it sits with the number-vomit rule as a
 house rule of this toolkit:
 
 > **Write it to be read, not to be filed.** A reader gives the first sentence
-> of every section about four seconds. Earn the fifth. Think of the opening of
-> a good science news story — it tells you what happened and why anyone should
-> care before it tells you how it was measured.
+> of every section about four seconds. Earn the fifth — with the problem, not
+> the answer.
 
 What that means in practice, and none of it is licence to overstate:
 
+- **The Introduction gives the background before the finding.** It runs in
+  the order of the reasoning: what is known, what is not, why that matters,
+  and only then what this paper did and found. The finding lands on a
+  question the reader already holds, so it reads as the answer to something
+  rather than a claim with its reason trailing behind it. Never open the
+  Introduction on this paper's result and backfill the context after it.
+  (Author decision, 2026-10-15. This replaced a "science news story" framing
+  that had the drafter lead the Introduction with the finding.)
 - **Open on the stake, not on the furniture.** "Metal-organic frameworks have
   attracted widespread attention due to their tunability" is the furniture —
   it is true of a thousand papers and tells the reader nothing about this one.
-  "The framework decides where the metal ends up" is the stake: it is this
-  paper's reason to exist, it is one idea, and it can be read aloud once.
-  Whatever else the paper is about goes in the *next* sentence, not folded
-  into this one.
+  "Nobody can yet predict where the metal ends up in a framework" is the
+  stake: it is the problem this paper exists to address, it is one idea, and
+  it can be read aloud once. It is background, not the result — the stake is
+  what is unresolved, never what this paper found. Whatever else the paper is
+  about goes in the *next* sentence, not folded into this one.
 - **One idea per sentence, and it has to survive being read aloud.** This has
   the same standing as the three rules above it, because the sentence a
   reader gives up on costs the four seconds the whole rule was written to
@@ -1133,8 +1141,13 @@ What that means in practice, and none of it is licence to overstate:
   `active_first_person` for this reason. Passive, impersonal prose does not
   read as more objective; it reads as harder, and the digest says so.
 
-**Three things this rule never buys**, and a draft that trades any of them for
+**Four things this rule never buys**, and a draft that trades any of them for
 interest is worse than a dull one:
+
+- **It does not move the finding ahead of the background.** In the
+  Introduction the hook is the open problem; the result comes after the
+  context that makes it matter. Leading a *Results* paragraph with its
+  finding is a different rule (layer 2 rule 7) and does not apply here.
 
 - **It is not a licence to overstate.** "Dramatic", "unprecedented",
   "remarkable" and "for the first time" are the exact words *Langmuir*'s own

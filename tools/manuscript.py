@@ -7655,7 +7655,10 @@ OPENING_SENTENCE_RULE = (
     "was first called. Provenance may appear later, or not at all. This is "
     "the only sentence every reader reads, and a true, citable, "
     "uncontroversial fact about the subject's naming is the most common way "
-    "to waste it.")
+    "to waste it. The Introduction then runs in reasoning order - what is "
+    "known, what is not, why it matters, and only then what this paper did "
+    "and found. Never open the Introduction on this paper's result and "
+    "backfill the background after it.")
 
 AGENT_MODULES: dict[str, dict] = {
     "outline": {
