@@ -9851,16 +9851,49 @@ def _agent_prompt(module: str, spec: dict, given: list[dict],
     # one certainly will - and on the run that found this, the agent reported
     # it in the hand-back, which no downstream check reads. A REQUIRED FIELD
     # is detectable by its absence; a line of prose is not.
+    #
+    # "every report file you write" was read as "every file you write", so an
+    # agent that also drafts a manuscript section headed THAT file with the
+    # field too - which ships `Auto-loaded files:` to the journal inside the
+    # paper. The field is report-only and the engine checks for it only on the
+    # `.md` reports under reports/ (`_wants_auto_loaded_field`); say exactly
+    # that, name those files, and forbid it everywhere else.
+    report_md = [w["path"] for w in writes
+                 if _wants_auto_loaded_field(module, w["path"])]
+    not_report = [w["path"] for w in writes if w["path"] not in report_md]
     lines.append("")
-    lines.append("REQUIRED FIELD - the first line of every report file you "
-                 "write, exactly this shape:")
+    if report_md:
+        lines.append("REQUIRED FIELD - the FIRST line of your report%s, "
+                     "exactly this shape:"
+                     % (" (each report file named below)"
+                        if len(report_md) > 1 else ""))
+    else:
+        # A pure generator (draft-sections) writes no report file - its only
+        # writes are manuscript sections. Told to head "every report file" with
+        # the field and holding none, an agent headed the sections instead, and
+        # `Auto-loaded files:` went into the manuscript. The field has nowhere
+        # to be a file header here: it goes in the hand-back, never in a file.
+        lines.append("REQUIRED FIELD - the FIRST line of the hand-back you "
+                     "return when you finish, exactly this shape:")
     lines.append("  %s none" % AUTO_LOADED_FIELD)
     lines.append("  %s <absolute path>, <absolute path>" % AUTO_LOADED_FIELD)
     lines.append("  Write it even when nothing arrived - `none` is the "
                  "answer that makes a MISSING field a failure rather than a "
-                 "silence. This is the only way a breach of the list above "
-                 "is visible from outside, and the engine checks that the "
-                 "field is there.")
+                 "silence. This is the only way a breach of the list above is "
+                 "visible from outside%s."
+                 % (", and the engine checks that the field is there"
+                    if report_md else ""))
+    if report_md:
+        lines.append("  THE FIELD GOES IN THAT FILE AND NOWHERE ELSE: %s."
+                     % ", ".join(report_md))
+    if not_report:
+        # The manuscript sections (and any JSON report, where a markdown
+        # header line would be invalid output rather than a leak).
+        lines.append("  DO NOT write this field into any other file you "
+                     "produce - %s. Those are the manuscript and its data, "
+                     "not your report; a copy left in them ships "
+                     "`%s` to the journal inside the paper."
+                     % (", ".join(not_report), AUTO_LOADED_FIELD))
     lines.append("")
     lines.append("WHY YOU ARE ISOLATED")
     lines.append("  %s" % spec["why"])
