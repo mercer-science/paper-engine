@@ -1688,6 +1688,17 @@ def test_version_bump_check() -> None:
         res = rel.version_staleness(repo)
         check("and the check goes QUIET after a correct bump",
               res["state"], "current", res.get("why"))
+
+        # A second release the same day has to CHANGE the string: the plugin
+        # manager compares versions for equality, so an unchanged date is a
+        # release no member ever receives.
+        first = out["version"]
+        again = rel.bump(repo, dry_run=True)
+        check("a second bump the same day changes the version",
+              again["version"], first + ".1", again)
+        rel.bump(repo)
+        check("...and a third counts on", rel.bump(repo, dry_run=True)
+              ["version"], first + ".2")
     finally:
         shutil.rmtree(repo, ignore_errors=True)
 

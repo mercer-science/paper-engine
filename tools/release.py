@@ -429,11 +429,20 @@ def bump(root: str, dry_run: bool = False, version: str = "") -> dict:
 
     out["was"] = str(data.get("version", ""))
     out["version"] = version or today_version()
-    if out["was"] == out["version"]:
-        out["notes"].append(
-            f"already {out['version']} - a second release on the same day "
-            f"carries the same date, which is the one case this scheme "
-            f"cannot express. Say so in the commit message instead")
+    # A second release on the same day. Claude Code updates a plugin only
+    # when this string CHANGES - it compares for equality and nothing else,
+    # and the manifest's version wins over the commit - so a release that
+    # keeps the date never reaches a member's machine. The day's Nth release
+    # carries a fourth part: 2026.10.17, then 2026.10.17.1, 2026.10.17.2.
+    if not version:
+        today = out["version"]
+        m = re.fullmatch(re.escape(today) + r"(?:\.(\d+))?", out["was"])
+        if m:
+            out["version"] = f"{today}.{int(m.group(1) or 0) + 1}"
+            out["notes"].append(
+                f"a second release today, so {out['version']} - the same "
+                f"string again would never reach a member, because the "
+                f"plugin manager only updates when the version changes")
     # Edited as TEXT rather than re-serialized: a json.dump would reformat a
     # manifest a human maintains, and a release that reindents the file it is
     # releasing makes every diff unreadable.
