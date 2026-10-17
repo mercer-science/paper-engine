@@ -1354,6 +1354,29 @@ def _yaml_scalar(value: object) -> str:
     return text
 
 
+def render_search_block(search: dict, heading: str) -> list[str]:
+    """The 'what was searched' record: the queries run and their counts.
+
+    A query that came back empty is written down with its ``0`` the same as
+    any other. A search that found nothing is information, not a gap - it tells
+    the next reader the ground was walked and (for a thin index like PubMed on
+    a chemistry topic) which way to read the emptiness. The write path and the
+    merge path render it through here so neither can drop it; the heading is the
+    only thing that differs (level 2 in a fresh record, level 3 under a merge's
+    dated block).
+    """
+    if not search:
+        return []
+    out = [heading, ""]
+    for q in search.get("queries") or []:
+        out.append(f"- `{q.get('query','')}` - {q.get('count','?')} hits"
+                   + (f", {q['range']}" if q.get("range") else ""))
+    if search.get("note"):
+        out += ["", search["note"]]
+    out.append("")
+    return out
+
+
 def render_ideas_md(b: dict) -> str:
     ideas = b.get("ideas") or {}
     out = [f"# Idea record", "",
@@ -1363,15 +1386,7 @@ def render_ideas_md(b: dict) -> str:
            f"stops the same ground being re-covered in three months.", "",
            f"Written {TODAY} by `idea-generation`.", "", "---", ""]
 
-    search = b.get("search") or {}
-    if search:
-        out += ["## What was searched", ""]
-        for q in search.get("queries") or []:
-            out.append(f"- `{q.get('query','')}` - {q.get('count','?')} hits"
-                       + (f", {q['range']}" if q.get("range") else ""))
-        if search.get("note"):
-            out += ["", search["note"]]
-        out.append("")
+    out += render_search_block(b.get("search") or {}, "## What was searched")
 
     out += ["## Candidates", ""]
     for c in ideas.get("candidates") or []:
@@ -2323,6 +2338,7 @@ def render_merge_candidates(b: dict) -> str:
     out = [f"## Idea, {TODAY} - {name}", "",
            "Candidates considered and not taken forward, with the feasibility "
            "answers as they were given.", ""]
+    out += render_search_block(b.get("search") or {}, "### What was searched")
     dropped = [c for c in (ideas.get("candidates") or [])
                if c.get("status") != "chosen"]
     if not dropped:
