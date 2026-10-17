@@ -350,8 +350,18 @@ Print, in this order:
      only once it has been written: the lab's own steps, quoted and dated,
      with `## Your Notes` at the end for what you learn at the bench
 
-Then offer the two optional steps below — mock data, and mock figures and
-tables from it — in one question, not two rounds.
+Then make the head-start offer that `offers` names, in one question, not two
+rounds — **every project except `none` gets one**:
+
+- `offers.mock_data` true (`measurements`) → mock data, and mock figures and
+  tables from it ("Mock data and mock floats" below)
+- `offers.image_placeholders` true (`images`) → figures laid out as grey
+  panels saying what image belongs in each ("Image Placeholder Figures"
+  below)
+
+Both false (`none`, or a review) is the only case with nothing to offer. An
+imaging project skipped here because the mock offers are false has lost its
+only head start, and nothing later asks again.
 
 Say the thing that is easy to miss: `plan/README.md` is the workhorse and the
 root `README.md` is only orientation for someone opening the project folder.

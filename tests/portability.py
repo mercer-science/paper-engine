@@ -586,6 +586,25 @@ def test_sequence_refusals_reach_the_skill() -> None:
           False)
 
 
+def test_every_kind_of_project_is_offered_its_head_start() -> None:
+    section("Every project but `none` is offered a head start at setup")
+
+    # Three imaging projects were set up and none was offered anything: the
+    # step that makes the offer named only mock data, which `images` turns
+    # off, so the agent skipped it and never reached the image placeholder
+    # section further down. The offer step has to name both, before either
+    # section it points at.
+    skill = read(os.path.join(ROOT, "skills", "setup-project-directory",
+                              "SKILL.md"))
+    first_section = min(skill.find("## Mock data and mock floats"),
+                        skill.find("## Image Placeholder Figures"))
+    step = skill[:first_section]
+    check("the offer step names the mock offer",
+          "offers.mock_data" in step, True)
+    check("...and the image placeholder offer, for `images` projects",
+          "offers.image_placeholders" in step, True)
+
+
 def test_context_isolation_fallback() -> None:
     section("A skill that needs isolation says what to do without it")
 
@@ -2224,6 +2243,7 @@ def main() -> int:
     test_the_label_rule_reaches_the_person_writing_the_label()
     test_user_state_never_lives_where_an_update_replaces_it()
     test_sequence_refusals_reach_the_skill()
+    test_every_kind_of_project_is_offered_its_head_start()
     test_context_isolation_fallback()
     test_plugin_manifest_matches_the_tree()
     test_tools_placeholder_is_defined()
