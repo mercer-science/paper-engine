@@ -3474,6 +3474,11 @@ def test_github_offer():
                 eq("...one with an origin is not",
                       (res["offer"], res["origin"]),
                       (False, "https://example.org/x.git"), res)
+                eq("...but with no manager installed, installing it is "
+                   "offered", (res["install_manager"],
+                               "already on GitHub" in res["install_reason"]),
+                   (not res["manager"]["installed"],
+                    not res["manager"]["installed"]), res)
             finally:
                 shutil.rmtree(r3, ignore_errors=True)
         else:
@@ -3489,8 +3494,20 @@ def test_github_offer():
         if os.name == "nt":
             os.remove(onpath + ".bat")
         res = sc.github_offer(proj)
-        eq("...and without the manager it is not raised",
+        eq("...and without the manager it cannot be taken over",
               (res["legacy_sync"], res["legacy_takeover"]), (True, False))
+        eq("...and a project that declined GitHub is not asked about it",
+              (res["declined"], res["install_manager"]), (True, False), res)
+        r4, p4, _ = new_project(title="Legacy")
+        try:
+            write(p4, sc.LEGACY_SYNC_SCRIPT, LEGACY_SYNC)
+            res = sc.github_offer(p4)
+            eq("...but one that did not is offered the manager instead of "
+               "silence", (res["legacy_sync"], res["install_manager"],
+                           "old GitHub sync" in res["install_reason"]),
+               (True, True, True), res)
+        finally:
+            shutil.rmtree(r4, ignore_errors=True)
         os.environ["PATH"] = keep["PATH"] or ""
         write(proj, sc.LEGACY_SYNC_SCRIPT, "#!/usr/bin/env bash\necho hi\n")
         eq("a script without the marker is not the old sync",

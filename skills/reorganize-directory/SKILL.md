@@ -305,10 +305,17 @@ Read the result; do not re-derive any of it. It never reaches a network.
    engine's old GitHub sync. The manager can take it over and will ask you
    about data first."* A yes runs the `connect` command below. **Never delete
    or edit the project's `.claude/hooks/sync.sh` yourself**: it keeps working
-   until the manager replaces it. When `legacy_sync` is true and the manager
-   is not installed, say nothing about it.
-3. **`offer` is false** → say nothing about GitHub. `skip_reason` is why.
-4. **`offer` is true** → ask, in these words:
+   until the manager replaces it.
+3. **`install_manager` is true** → the project is already on GitHub, or still
+   on the old sync, and github-ai-project-manager is not installed on this
+   computer - so nothing is keeping it in step. Say `install_reason` in one
+   sentence and offer the install, as in the **Yes, and not installed** row
+   below. A yes installs it and then runs `github-offer` again; a no is
+   `--decline`. Never stay silent here: that silence is how a project went on
+   with no sync and no word about it.
+4. **`offer` is false** (and no install to offer) → say nothing about
+   GitHub. `skip_reason` is why.
+5. **`offer` is true** → ask, in these words:
 
 > Would you like this project on GitHub? It keeps a backup, and it keeps the
 > project in step between computers — the lab computer and your laptop, say.

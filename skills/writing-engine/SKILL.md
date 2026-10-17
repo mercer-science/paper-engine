@@ -185,6 +185,26 @@ every coauthor who opens the folder.
 journal changes the figure widths, DPI, and base font size, so
 `plan/render_all.R` must be re-run before assembling. Offer to run it.
 
+**Offer GitHub once, on the first run in a project that has never been
+asked.** A paper that came straight to the writing engine - never through
+`setup-project-directory` or `reorganize-directory` - has never been offered
+GitHub, and those two skills are the only other places the offer is made:
+
+```bash
+python <tools>/scaffold.py github-offer "<project>" --json
+```
+
+If `install_manager` is true, say `install_reason` and offer to install
+github-ai-project-manager - the project is on GitHub or the old sync with
+nothing on this computer keeping it in step. If `offer` is false and there is
+no install to offer, say nothing (`skip_reason` says why). If `offer` is true,
+make the offer exactly as
+`setup-project-directory`'s **GitHub** section words it, and hand over the
+same way - github-ai-project-manager sets up the repository and its sync
+hooks; this skill never runs git or writes a hook itself. A **No** is recorded
+with `--decline` and nothing asks again; **Not now** records nothing. Ask once
+per project, after `init`, not every round.
+
 **When the journal is a SECOND one, `init` offers to retire the first.** It
 appends an `offer` action naming the old folder and the command; it moves
 nothing, because routing offers and never runs, and this one moves a directory

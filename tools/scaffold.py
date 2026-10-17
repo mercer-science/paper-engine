@@ -5156,7 +5156,8 @@ def github_offer(root: str) -> dict:
     res: dict = {"path": root, "offer": False, "skip_reason": "",
                  "origin": "", "declined": False, "synced_folder": "",
                  "manager": find_manager(), "legacy_sync": False,
-                 "legacy_takeover": False, "connect": [], "error": ""}
+                 "legacy_takeover": False, "install_manager": False,
+                 "install_reason": "", "connect": [], "error": ""}
     if not os.path.isdir(root):
         res["error"] = f"no such directory: {root}"
         return res
@@ -5169,6 +5170,22 @@ def github_offer(root: str) -> dict:
     # The takeover is said once whenever the manager could do it, whether or
     # not the offer itself is skipped: a legacy project usually HAS an origin.
     res["legacy_takeover"] = res["legacy_sync"] and res["manager"]["installed"]
+    # The manager is what keeps a project in step on GitHub now, so a project
+    # that is ALREADY there, or still on the old sync, with no manager on this
+    # computer is exactly the one to offer it to. Saying nothing there is how
+    # a project went months with neither sync nor a word about it.
+    if not res["manager"]["installed"] and not res["declined"]:
+        if res["legacy_sync"]:
+            res["install_manager"] = True
+            res["install_reason"] = (
+                "this project uses the paper engine's old GitHub sync, which "
+                "github-ai-project-manager replaces; it is not installed here")
+        elif res["origin"]:
+            res["install_manager"] = True
+            res["install_reason"] = (
+                "this project is already on GitHub, and github-ai-project-"
+                "manager - what keeps it in step between computers - is not "
+                "installed here")
     if res["origin"]:
         res["skip_reason"] = f"already its own repository, with origin {res['origin']}"
     elif res["declined"]:
@@ -5207,6 +5224,8 @@ def print_github_offer(res: dict) -> None:
     mgr = res["manager"]
     print(f"{MANAGER}: " + (f"installed ({mgr['via']})" if mgr["installed"]
                             else f"not installed - {MANAGER_URL}"))
+    if res["install_manager"]:
+        print(f"Offer to install the manager: {res['install_reason']}.")
     if res["offer"]:
         print("Offer GitHub. Hand-over command:")
         print("  " + " ".join(f'"{a}"' if " " in a else a
