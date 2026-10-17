@@ -567,6 +567,16 @@ def test_write():
               "chemoreceptor array cryo-electron tomography" in ideas_md
               and "25 hits" in ideas_md,
               "report the search, not just the conclusions")
+        empty = idea.render_search_block(
+            {"queries": [{"query": "surface reconstruction XPS", "count": 0,
+                          "range": "2021-2026"}],
+             "note": "PubMed is thin here; a biology index would read as empty."},
+            "## What was searched")
+        check("a query that found nothing is written down with its 0",
+              any("0 hits" in l and "surface reconstruction XPS" in l
+                  for l in empty)
+              and any("PubMed is thin" in l for l in empty),
+              "a search that found nothing is information, not silence")
 
         summary = read(proj, "plan/relevant_literature/relevant_literature_summary.md")
         check("the literature summary carries PMIDs and why each paper is there",
@@ -1057,6 +1067,12 @@ def test_merge_additive():
         ideas_md = read(proj, "plan/ideas.md")
         check("the rejected candidates went to plan/ideas.md",
               "## Idea, " in ideas_md)
+        check("a merge records what was searched, same as a fresh write",
+              "What was searched" in ideas_md
+              and "chemoreceptor array cryo-electron tomography" in ideas_md
+              and "25 hits" in ideas_md,
+              "a search that found nothing is information, not a gap - it must "
+              "reach ideas.md on a merge too, not only on a fresh write")
         check("proposed methods is a new file",
               os.path.isfile(os.path.join(proj, "data",
                                           "methods_proposed.yml")))
