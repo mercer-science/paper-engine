@@ -101,6 +101,32 @@ easy to get wrong in the same direction.**
   is fine and common. `reference-doc` falls back to Times New Roman 12 pt,
   double, 1 in. and says on every build which values were defaults.
 
+**Get the conflict-of-interest form while you are there - now, when the
+journal is chosen, not when the package is built.** Signed disclosures come
+back over weeks from people who are not watching this project, so the day the
+journal is picked is the day the form should go out. Find what the journal
+requires (an ICMJE disclosure form, the publisher's own declaration, or both;
+some collect it in the submission portal and publish no form), download each
+form, and file it:
+
+```bash
+python <tools>/manuscript.py coi-form "<project>" --journal IJROBP --file "<downloaded form>" --url "<the page it came from>"
+python <tools>/manuscript.py coi-form "<project>" --journal IJROBP --not-required --url "<the page saying the portal collects it>"
+```
+
+It copies the form into `plan/author_information/conflict_statements/blank_form/`,
+records `submission.coi_form` and `submission.coi_form_url`, and makes **the
+PDF that goes out for signature** beside it - a PDF form is used as it is, a
+Word form is converted (LibreOffice, then Word). Tell the user where that PDF
+is and that it is ready for DocuSign: one envelope, every author a signer, each
+signed copy saved back into `conflict_statements/` under that author's
+initials. It refuses a "form" that is really a login page saved under a `.pdf`
+name - the download failure that reads as a success - and a form with no
+source URL. With no converter it says so and gives the thirty-second manual
+route (Word, Save As PDF); it never writes a PDF that is not the form. Most
+publisher links download from a script; one that does not is recorded by URL
+and the user is asked to save it, exactly as for the Word template above.
+
 **Capture the graphical abstract's rules while you are there**, as a
 `toc_graphic:` block — whether one is required, **what this journal calls it**,
 its size in inches, DPI by color mode, accepted formats, font family and minimum
@@ -1071,16 +1097,20 @@ An `unmatched` file is reported like a missing one, and it means what it says:
 a form filed under a name the author list does not recognise. Offer to rename
 it to the author's initials; do not guess whose it is.
 
-### Go and get the blank form — the first time the statement is flagged
+### Go and get the blank form — when the journal is chosen
 
-**On the round where the Competing Interests statement first raises a
-`**[FLAG: author]**`, fetch the journal's own disclosure form.** Not when the
-package is built and everybody is waiting on it — then. On a first round there
-are no signed forms and there is no blank one either, and those two look
-identical from the report while the fix for each is the opposite: chase four
-people, or go and find one PDF.
+**The form is fetched with the journal requirements** (above, `coi-form`).
+This section is the fallback for a project whose journal was chosen before
+that existed: **on the round where the Competing Interests statement first
+raises a `**[FLAG: author]**`, if `blank_form/` is still empty and
+`submission.coi_form` is still `unknown`, fetch the form then.** Not when the
+package is built and everybody is waiting on it. On a first round there are no
+signed forms and there is no blank one either, and those two look identical
+from the report while the fix for each is the opposite: chase four people, or
+go and find one PDF.
 
-What to do, once:
+What to do, once (`coi-form` does steps 2 and 3, and makes the PDF for
+signature):
 
 1. **Read the journal's author guidelines** for what they require — most
    publishers link an ICMJE disclosure form, their own declaration, or both.

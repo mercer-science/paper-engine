@@ -134,20 +134,34 @@ the current paper inconsistent with the lesson just taken out of it.
 python <tools>/learn.py frozen "<project>" --json
 ```
 
-Four states, and the plan line already printed them before you were asked to
-go:
+The plan line already printed these before you were asked to go:
 
 | state | means | what happens |
 |---|---|---|
 | `fresh` | no entry, or an empty stub | drafted normally |
-| `engine-owned` | the hash matches what the engine last wrote | may be redrafted and revised |
-| `frozen` | the hash differs — **you edited it** | draft-sections and revise-prose both skip it, and this module learns from it |
-| `wiped` | there is an entry but no file | drafted normally — the existing "empty `source_text/` to force a redraft" gesture, which keeps working |
+| `engine-owned` | every paragraph is the engine's - unchanged, or edited lightly (`adopted`) | may be redrafted and revised; a light edit is the new base and is learned from |
+| `partly-yours` | some paragraphs are yours - written new, or rewritten past recognition | the engine works on the rest; each of `protected_paragraphs` stays verbatim, in place |
+| `frozen` | every paragraph is yours, or the record predates paragraph tracking (`legacy`) | draft-sections and revise-prose both skip it, and this module learns from it |
+| `wiped` | there is an entry but no file | drafted normally - the existing "empty `source_text/` to force a redraft" gesture, which keeps working |
 
-**Section granularity, never paragraph.** A paragraph-level hash would let the
-engine keep writing around your edits, which is the behaviour that makes a tool
-untrustworthy. Hashing normalizes trailing whitespace, line endings and runs of
-blank lines, and nothing else — a changed word is a change.
+**Paragraph granularity, and only for what you wrote.** A paragraph is yours
+when it keeps less than 60% of the words of every paragraph the engine wrote -
+new, or rewritten. A reworded phrase or an added sentence in the engine's
+paragraph keeps most of it, so it stays the engine's: freezing a whole section
+for that protected prose nobody had claimed, and the readability pass then
+skipped it (BgRT, 2026-10). **What you added is kept** - an
+`edited_paragraph`'s added facts and changed wording are the base the next pass
+works from, not something it reverts.
+
+Your paragraphs are held by text when a round opens (`run --start`), so the
+record a module writes when it finishes still knows which were yours, and a
+module that rewrote or dropped one is reported by name as an error on its
+step. The engine's own writes - `prose.py spelling --fix`, `italics --fix`,
+`move-passage` - keep the record in step, so they never read as your edits.
+
+A record from before paragraph tracking cannot split an edited section by
+paragraph, so it holds the whole section once and says so (`legacy`); the next
+time the engine writes that section it records paragraph by paragraph.
 
 **`--redraft <section>` on `plan` or `run --start` hands one back**, for that
 invocation only, never sticky. It reports what it will discard, because what is
@@ -190,8 +204,9 @@ anyone's taste. It may contribute to a `kind: numeric` budget record and to
 Propagate each `stylistic` or `structural` lesson to the **engine-owned**
 sections of this manuscript, as the highest style authority under layer 0.
 
-- It may **not** write to a frozen section. Your own prose is never "improved"
-  by a lesson induced from it.
+- It may **not** write to a frozen section or to a paragraph of yours in a
+  `partly-yours` one. Your own prose is never "improved" by a lesson induced
+  from it.
 - It runs before draft-sections, so a section drafted this round is drafted
   with the lesson in its brief rather than patched afterwards.
 - A lesson propagated into an already-drafted section is subject to the same
@@ -341,8 +356,10 @@ yields, do what layers 1–3 require and log the override in
 a layer-1 lesson would require breaking it, do not apply the lesson — report
 it.
 
-**Skip every frozen section** (§0c). A section the user has taken over is not
-redrafted, and its outline lines are not reported as uncovered.
+**Skip every frozen section** (§0c), and in a `partly-yours` section keep each
+of the user's paragraphs verbatim, in place, drafting around them. A section
+the user has taken over is not redrafted, and its outline lines are not
+reported as uncovered.
 
 Then read `plan/literature_landscape.md` (§0b — it is an input to this module, not a
 reference you may skip), `plan/outline.md`, `plan/README.md`,
@@ -557,7 +574,9 @@ re-argue the science; given the stats output it will add numbers; given the
 README it will restore the paper we meant to write. Denied all of it, the only
 thing it can act on is how the prose reads.
 
-**It skips every frozen section.** Your prose is not "polished" for you.
+**It skips every frozen section, and every paragraph of yours in a
+`partly-yours` one.** Your prose is not "polished" for you. A paragraph of the
+engine's that you touched lightly is still polished - keeping what you added.
 
 **It revises the supplement with the round.** On a whole-paper pass
 `supplementary.md` is in the pass's writes, snapshotted and checked like any

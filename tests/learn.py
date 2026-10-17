@@ -907,8 +907,13 @@ def test_frozen(tmp: str) -> None:
     with io.open(methods, "a", encoding="utf-8", newline="") as fh:
         fh.write("\nOne sentence added by hand.\n")
     res = learn.frozen(proj)
-    check("one hand-edited section freezes", res["frozen"], ["methods"])
-    check("...and only that one",
+    # A paragraph added by hand is the user's; the engine's paragraph beside
+    # it is not, so the section is shared rather than frozen whole.
+    check("a paragraph added by hand makes the section partly the user's",
+          (res["frozen"], res["partly"]), ([], ["methods"]))
+    check("...holding that paragraph and nothing else",
+          res["protected"]["methods"], ["One sentence added by hand."])
+    check("...and only that section",
           [r["state"] for r in res["sections"]
            if r["section"] == "results"], ["engine-owned"])
 
@@ -954,6 +959,109 @@ def test_frozen(tmp: str) -> None:
         ok = True
     check("unreadable provenance fails loudly rather than looking fresh",
           ok, True)
+
+
+def test_paragraph_ownership(tmp: str) -> None:
+    """Only a paragraph the user wrote is theirs (BgRT, 2026-10): a reworded
+    phrase or an added sentence in the engine's paragraph froze the whole
+    section, and the readability pass then skipped prose nobody had claimed."""
+    section("Paragraphs the user wrote, and only those, are theirs")
+    proj = os.path.join(tmp, "para_project")
+    st = os.path.join(proj, "source_text")
+    os.makedirs(st)
+    os.makedirs(os.path.join(proj, "Langmuir", "journal_requirements"))
+    p1 = ("Thermophilic arrays were grown on gold at 30 C and imaged by "
+          "cryo-EM after vitrification in liquid ethane.")
+    p2 = ("Lattice parameters were refined against the averaged density and "
+          "compared across three independent preparations.")
+    p3 = ("Symmetry was assigned from the power spectrum before any "
+          "averaging was attempted.")
+    path = os.path.join(st, "methods.md")
+
+    def put(*paras: str) -> None:
+        with io.open(path, "w", encoding="utf-8", newline="") as fh:
+            fh.write("# Methods\n\n" + "\n\n".join(paras) + "\n")
+
+    def row() -> dict:
+        return [r for r in learn.frozen(proj)["sections"]
+                if r["section"] == "methods"][0]
+
+    put(p1, p2, p3)
+    learn.record_provenance(proj, ["methods"], "draft-sections", "r1")
+    check("a fresh record is the engine's", row()["state"], "engine-owned")
+
+    put(p1.replace("imaged by", "then imaged by"), p2, p3)
+    r = row()
+    check("a reworded phrase does not freeze anything",
+          (r["state"], r["adopted"]), ("engine-owned", True))
+    check("...and is reported as an edit to the engine's paragraph",
+          len(r["edited_paragraphs"]), 1)
+
+    put(p1, p2 + " Each preparation used a fresh grid batch.", p3)
+    check("an added sentence does not freeze anything",
+          row()["state"], "engine-owned")
+
+    mine = ("We excluded any grid with visible ice contamination, judged by "
+            "eye at low magnification before collection began.")
+    put(p1, mine, p3)
+    r = row()
+    check("a paragraph rewritten by hand is the user's",
+          (r["state"], r["protected_paragraphs"]), ("partly-yours", [mine]))
+
+    put("Something else entirely about the buffer exchange.",
+        "A second paragraph of the user's own about storage.")
+    check("every paragraph the user's freezes the section",
+          row()["state"], "frozen")
+
+    # Round start holds the user's paragraph; the module rewrites the rest;
+    # the new record still knows which paragraph was theirs.
+    put(p1, mine, p3)
+    learn.mark_protected(proj)
+    put("Arrays were grown on gold at 30 C and vitrified in liquid ethane "
+        "before cryo-EM.", mine, p3)
+    rec = learn.record_provenance(proj, ["methods"], "revise-prose", "r2")
+    r = row()
+    check("after the engine rewrites the rest, the user's paragraph is "
+          "still theirs", (r["state"], r["protected_paragraphs"]),
+          ("partly-yours", [mine]))
+    check("...and nothing of theirs was lost",
+          rec["counts"]["protected_lost"], 0)
+
+    learn.mark_protected(proj)
+    put(p1, "We dropped contaminated grids.", p3)
+    rec = learn.record_provenance(proj, ["methods"], "revise-prose", "r3")
+    check("a module that rewrites the user's paragraph is caught",
+          rec["protected_lost"].get("methods"), [mine])
+
+    # A record written before paragraphs were tracked cannot tell whose a
+    # paragraph is, so it holds the whole section and says why.
+    data = learn.read_provenance(proj)
+    put(p1, p2, p3)
+    data["methods"] = {"sha256": learn.section_hash(
+        "# Methods\n\n" + "\n\n".join([p1, p2, p3]) + "\n")}
+    learn.write_provenance(proj, data)
+    check("an older record still matches when nothing changed",
+          row()["state"], "engine-owned")
+    put(p1.replace("imaged", "examined"), p2, p3)
+    r = row()
+    check("an older record cannot split an edit by paragraph, and says so",
+          (r["state"], r["legacy"]), ("frozen", True))
+
+    # The engine's own corrections are not the user's edits.
+    put(p1, p2, p3)
+    learn.record_provenance(proj, ["methods"], "draft-sections", "r4")
+    data = learn.read_provenance(proj)
+    del data["methods"]["paragraphs"]          # the older shape again
+    learn.write_provenance(proj, data)
+    put(p1 + " The colour of the grid was noted.", p2, p3)
+    data = learn.read_provenance(proj)
+    data["methods"]["sha256"] = learn.section_hash(
+        _slurp(path, encoding="utf-8"))
+    learn.write_provenance(proj, data)
+    fixed = learn.prose.spelling([path], fix=True)
+    check("spelling --fix corrected the file", bool(fixed["written"]), True)
+    check("...and the section is still the engine's, not frozen by the fix",
+          row()["state"], "engine-owned")
 
 
 # ---------------------------------------------------------------------------
@@ -1600,6 +1708,7 @@ def main() -> int:
         test_extract()
         test_classify()
         test_frozen(tmp)
+        test_paragraph_ownership(tmp)
         test_merge(tmp)
         test_stats(tmp)
         test_registry_home(tmp)

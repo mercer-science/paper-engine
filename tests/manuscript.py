@@ -766,6 +766,97 @@ def test_blank_coi_form(tmp: str) -> None:
                                     ms.read_flat_yml(reqfile_n)), [])
 
 
+def test_coi_form_cmd(tmp: str) -> None:
+    section("coi-form: the journal's form, filed when the journal is chosen, "
+            "and a PDF for signature")
+    sub = os.path.join(tmp, "coicmd")
+    os.makedirs(sub, exist_ok=True)
+    root = _scaffold(sub, "coicmd")
+    ms.init(root, "Langmuir")
+    reqfile = os.path.join(ms.journal_dir(root, "Langmuir"),
+                           "journal_requirements", "requirements.yml")
+    before = read(reqfile)
+    dl = os.path.join(tmp, "coicmd_downloads")
+    os.makedirs(dl, exist_ok=True)
+    url = "https://example.org/authors/disclosure"
+
+    page = os.path.join(dl, "form.pdf")
+    wr(page, "<!DOCTYPE html><html><body>Sign in</body></html>")
+    res = ms.coi_form(root, "Langmuir", file=page, url=url)
+    check("a login page saved as form.pdf is refused, not filed",
+          (bool(res["errors"]) and "web page" in res["errors"][0],
+           os.path.exists(os.path.join(ms.blank_coi_dir(root), "form.pdf"))),
+          (True, False))
+
+    pdf = os.path.join(dl, "example_disclosure.pdf")
+    wr(pdf, "%PDF-1.4\n%fake but shaped like one\n")
+    check("a form with no source is refused",
+          bool(ms.coi_form(root, "Langmuir", file=pdf)["errors"]), True)
+    res = ms.coi_form(root, "Langmuir", file=pdf, url=url)
+    check("a PDF form is filed into blank_form/",
+          (res["errors"], res["filed"]), ([], ["example_disclosure.pdf"]))
+    check("...and is itself the copy that goes out for signature",
+          [p["pdf"] for p in res["pdfs"]], ["example_disclosure.pdf"])
+    req = ms.read_flat_yml(reqfile)
+    check("requirements.yml records it, sourced",
+          (req.get("submission.coi_form"), req.get("submission.coi_form_url")),
+          ("required", url))
+    after = read(reqfile)
+    check("...changing those two lines and nothing else",
+          [a for a, b in zip(before.splitlines(), after.splitlines())
+           if a != b and "coi_form" not in a], [])
+    coi = ms.conflict_statements(root)
+    check("the blank is not counted as a signed form",
+          (coi["blank_form"], coi["forms"]), (["example_disclosure.pdf"], []))
+
+    try:
+        import docx                              # python-docx
+    except ImportError:
+        docx = None
+    if docx is None:
+        skip("a Word form becomes a PDF", "python-docx is not installed")
+    else:
+        d = docx.Document()
+        d.add_paragraph("Disclosure of Potential Conflicts of Interest")
+        word = os.path.join(dl, "journal_declaration.docx")
+        d.save(word)
+        res = ms.coi_form(root, "Langmuir", file=word, url=url)
+        made = [p for p in res["pdfs"] if p["form"] == "journal_declaration.docx"]
+        if res["manual"]:
+            check("with no converter, the manual route is said rather than a "
+                  "fake PDF written",
+                  (made, "Save As PDF" in res["manual"][0]["do"]), ([], True))
+        else:
+            out = os.path.join(ms.blank_coi_dir(root), "journal_declaration.pdf")
+            check("a Word form becomes a real PDF beside it",
+                  (bool(made), os.path.isfile(out)
+                   and _slurp(out, "rb")[:4] == b"%PDF"), (True, True),
+                  str(res))
+
+    res = ms.coi_form(root, "Langmuir", not_required=True)
+    check("not_required without a source is refused", bool(res["errors"]),
+          True)
+    sub_n = os.path.join(tmp, "coicmd_none")
+    os.makedirs(sub_n, exist_ok=True)
+    root_n = _scaffold(sub_n, "coicmdnone")
+    ms.init(root_n, "Langmuir")
+    ms.coi_form(root_n, "Langmuir", not_required=True, url=url)
+    req_n = ms.read_flat_yml(os.path.join(
+        ms.journal_dir(root_n, "Langmuir"), "journal_requirements",
+        "requirements.yml"))
+    check("a journal with no form is recorded as such, with its source",
+          (req_n.get("submission.coi_form"),
+           req_n.get("submission.coi_form_url")), ("not_required", url))
+
+    cli = subprocess.run(
+        [sys.executable, os.path.join(ROOT, "tools", "manuscript.py"),
+         "coi-form", root, "--journal", "Langmuir", "--json"],
+        capture_output=True, text=True, encoding="utf-8", errors="replace")
+    check("the CLI reports the forms ready for signature",
+          (cli.returncode, "example_disclosure.pdf" in cli.stdout), (0, True),
+          cli.stderr[-300:])
+
+
 def test_folder_naming() -> None:
     section("Journal folder naming (spec 2.1)")
 
@@ -9473,10 +9564,28 @@ def test_the_freeze(tmp: str) -> None:
           run.stderr[:200])
     check("...and its own prose is not frozen against it", frozen_now(), [])
 
-    # The whole point: a hand edit is a takeover, and one byte is enough.
+    # A paragraph the user adds is theirs; the engine's paragraphs around it
+    # are not, so the section stays writable with that paragraph held
+    # (BgRT, 2026-10: one added line froze a whole section).
+    engine_methods = read(os.path.join(st, "methods.md"))
     write(root, "drafts/source_text/methods.md",
-          read(os.path.join(st, "methods.md")) + "\nA turbo pump was used.\n")
-    check("one hand-edited section freezes, and only it",
+          engine_methods + "\nA turbo pump was used.\n")
+    check("a paragraph added by hand holds that paragraph, not the section",
+          (frozen_now(), ms.load_frozen(root)["partly"]), ([], ["methods"]))
+    res = plan()
+    check("...so the section is still handed to the generating modules",
+          "methods" in res["sections_writable"], True)
+    check("...with the user's paragraph named, to be left verbatim",
+          (res["protected"].get("methods"),
+           "left verbatim" in res["freeze_note"]),
+          (["A turbo pump was used."], True))
+
+    # A section rewritten by hand, every paragraph of it, is a takeover.
+    write(root, "drafts/source_text/methods.md",
+          "# Methods\n\nWe pumped the chamber down overnight with a turbo "
+          "pump of our own choosing.\n\nNothing else about the setup "
+          "matters for this paper.\n")
+    check("a section rewritten by hand freezes, and only it",
           frozen_now(), ["methods"])
 
     res = plan()
@@ -9515,7 +9624,8 @@ def test_the_freeze(tmp: str) -> None:
           plan()["frozen"], ["methods"])
     check("--redraft on a section that is not frozen is refused, not "
           "silently honoured",
-          any("not frozen" in w for w in plan(redraft=["results"])["warnings"]),
+          any("nothing in that section is yours" in w
+              for w in plan(redraft=["results"])["warnings"]),
           True)
     check("--redraft all hands back everything frozen",
           plan(redraft=["all"])["redrafted"], ["methods"])
@@ -9586,13 +9696,13 @@ def test_provenance_is_recorded_when_a_module_writes(tmp: str) -> None:
     write(root, "drafts/source_text/methods.md",
           read(os.path.join(stdir(root), "methods.md"))
           + "\nA turbo pump was used.\n")
-    check("one hand edit to a recorded section freezes it",
-          ms.load_frozen(root)["frozen"], ["methods"])
+    check("one hand edit to a recorded section is seen",
+          ms.load_frozen(root)["partly"], ["methods"])
     res = ms.plan(root, J, "draft")
-    check("...and the plan takes it away from the generating modules",
-          "methods" in res["sections_writable"], False)
-    check("...and counts it",
-          res["freeze_counts"]["frozen"], 1)
+    check("...and the plan holds the user's paragraph, not the section",
+          ("methods" in res["sections_writable"],
+           res["freeze_counts"]["partly"],
+           res["freeze_counts"]["protected_paragraphs"]), (True, 1, 1))
 
     # A step that has not finished has not written. Recording a hash for
     # prose still being written would claim the engine owns half a section.
@@ -13962,6 +14072,29 @@ def test_items_138_to_157(tmp: str) -> None:
     check("145: ...and refuses a passage it cannot find exactly once",
           bool(mv["errors"]), True)
 
+    # A move made on a coauthor's say-so is the engine's own write: an engine
+    # paragraph is still the engine's afterwards, in both sections, and is
+    # not read next round as the user's edit (BgRT, 2026-10).
+    write(root, "drafts/source_text/methods.md",
+          read(stfile(root, "methods.md"))
+          + "\n\nGrids were stored at liquid nitrogen temperature until "
+            "imaging, for no longer than two weeks.\n")
+    ms.record_frozen(root, ["methods", "results"], "draft-sections", "r1")
+    mv = ms.move_passage(root, "Grids were stored at liquid nitrogen "
+                         "temperature until imaging, for no longer than two "
+                         "weeks.", "results")
+    rows = {r["section"]: r for r in ms.load_frozen(root)["sections"]}
+    check("move-passage leaves the moved engine paragraph the engine's",
+          (mv["errors"], rows["methods"]["state"],
+           any("Grids were stored" in t
+               for t in rows["results"]["protected_paragraphs"])),
+          ([], "engine-owned", False))
+    # The sentence moved by the earlier request was added to methods by hand,
+    # so it is the user's - and it stays theirs in its new section.
+    check("...while a paragraph of the user's stays theirs after its move",
+          rows["results"]["protected_paragraphs"],
+          ["Each n is stated wherever a result is reported."])
+
 
 def write_csl_style(path: str, layout_attrs: str) -> None:
     """A numeric CSL pandoc will render with: one citation layout carrying
@@ -14005,6 +14138,7 @@ def main() -> int:
         test_submission_names(tmp)
         test_reviewer_placement(tmp)
         test_blank_coi_form(tmp)
+        test_coi_form_cmd(tmp)
         test_config_reading(root)
         test_custom_instructions(root)
         test_plan(root)

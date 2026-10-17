@@ -89,9 +89,9 @@ rows.
 | `sequence.py` | BLAST, the genes either side of one on a contig, and what to do when AlphaFold DB has no model. Submit-then-poll, and the CLI does not hide it. **Evidence for feasibility and methods, never for a gap** — a BLAST miss is not evidence of novelty. Offered in idea-generation Stage 5, never run unasked |
 | `scaffold.py` | The project structure, the R float pipeline, `github-offer` (whether to offer GitHub and the hand-over to github-ai-project-manager; the engine no longer runs git itself), `adopt` (scaffold a folder that already has work in it and propose a home for the rest, now with `--depth` and `--sweep-unknown`), `survey`, `float-order` (what the filenames imply about the float set — proposes, never renames), `report` (what this folder can and cannot now do), `drop` (an empty scaffold folder the project does not need, recorded in `project.yml` as `dropped_dirs:` so it is neither re-created nor reported missing; `--restore` undoes it), `image-floats`, `harvest`, `prefill`, `float lint` |
 | `idea.py` | The deterministic half of idea generation: resolve, context, write, merge |
-| `manuscript.py` | State and the build — 33 subcommands: init, status, config, ai-disclosure, outline, plan, agent-brief, reading-findings, ai-voice-findings, flag-answers, retention, run, round, retire-journal, handoff, assemble, supplementary, landscape, submission-package, submission-names, strays, import-prose, move-passage, log-issue, reference-doc, format-check, completeness, figure-files, authors, bib, ris, ingest, response. The only thing here that needs pandoc |
+| `manuscript.py` | State and the build — 34 subcommands: init, status, config, ai-disclosure, outline, plan, agent-brief, reading-findings, ai-voice-findings, flag-answers, retention, run, round, retire-journal, handoff, assemble, supplementary, landscape, submission-package, submission-names, strays, import-prose, move-passage, log-issue, reference-doc, format-check, completeness, figure-files, authors, bib, ris, coi-form, ingest, response. `coi-form` files the journal's blank conflict-of-interest form when the journal is chosen and makes the PDF that goes out for signature (DocuSign). The only thing here that needs pandoc |
 | `prose.py` | Every prose rule with a countable answer — 16 subcommands, `italics`, `entity_forms` and `abbreviations` the newest. Pure stdlib, fully offline. **Nothing here gates**: every one exits 0 with findings. **TWO of them WRITE** under `--fix` — `spelling`, and the always-italic half of `italics` — and both earn it the same way: an exact substring, a lookup, no threshold, every false positive nameable. **Nothing here is merely reported, either** — prose 12: `readability` and `metaprose` findings are handed to module 1c and fixed before any checker reads the paper. The densities are not, and that is what keeps the pass from chasing a number |
-| `learn.py` | The learning loop: what the coauthors' edits teach, promoted to rules. **`rules.yml` never leaves the machine** |
+| `learn.py` | The learning loop: what the coauthors' edits teach, promoted to rules. **`rules.yml` never leaves the machine**. Also the freeze: **a paragraph the user wrote** is theirs and left verbatim (`partly-yours`); a reworded phrase or added sentence in the engine's paragraph is not a takeover |
 | `docx_edits.py` | Tracked changes and comments out of a `.docx`. Never writes one |
 | `toc_graphic.py` | The graphical abstract as an authored PowerPoint float, and the shared record of PowerPoint first, BioRender second - `connector-record --use` decides which image the generated block ships |
 | `graphic_figure.py` | PowerPoint panel art inside a figure folder, and the record of PowerPoint first, BioRender second: `approve` (the user approved this draft, by content hash) and `connector-record` (a BioRender version made from it, stale once the draft moves on) |
@@ -113,12 +113,12 @@ modules and are still callable standalone.
 
 ### What Was Last Measured
 
-**2026-10-14, after BioRender and the Codex and drop-folder merges.** Offline
-suites on Python 3.13 with pandoc 3.1.3 and the optional packages, no R:
-manuscript **2757** (1 skipped), portability **1249**, scaffold **594**
-(6 skipped), labpack **389**, toc_graphic **327**, graphic_figure **86**
-(1 skipped), install 219 (1 skipped), idea 200 (1 skipped), structure 197,
-prose 475, learn 259, review 161, help_deck 118, docx_edits 107, sequence
+**2026-10-17, after the paragraph freeze, coi-form and the manager offer.**
+Offline suites on Python 3.13 with pandoc 3.1.3, LibreOffice and the optional
+packages, no R: manuscript **2772** (1 skipped), portability **1251**, scaffold
+**597** (6 skipped), labpack **389**, toc_graphic **327**, learn **273**,
+graphic_figure 86 (1 skipped), install 219 (1 skipped), idea 200 (1 skipped),
+structure 197, prose 475, review 161, help_deck 118, docx_edits 107, sequence
 100, cite 54 (1 skipped). `pyright`: 0 errors, 0 warnings. Run the suites `AGENTS.md` names before
 claiming a change is done.
 

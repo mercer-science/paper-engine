@@ -7078,7 +7078,9 @@ def load_frozen(project: str,
     on the next diff, and a run that refuses to start is not.
     """
     empty = {"project": project, "sections": [], "frozen": [],
-             "counts": {"sections": 0, "frozen": 0}}
+             "partly": [], "protected": {},
+             "counts": {"sections": 0, "frozen": 0, "partly": 0,
+                        "protected_paragraphs": 0}}
     try:
         sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
         import learn as _learn                      # local engine, stdlib only
@@ -7097,7 +7099,8 @@ def load_frozen(project: str,
 
 def record_frozen(project: str, sections: list[str], by: str,
                   round_id: str = "",
-                  problems: list[str] | None = None) -> dict:
+                  problems: list[str] | None = None,
+                  also_user: list[str] | None = None) -> dict:
     """The hash of record for the sections a module has just written (4.1).
 
     This is `load_frozen`'s missing half, and its absence was item 88. The
@@ -7133,7 +7136,8 @@ def record_frozen(project: str, sections: list[str], by: str,
                             f"provenance: {exc}")
         return empty
     try:
-        return _learn.record_provenance(project, sections, by, round_id)
+        return _learn.record_provenance(project, sections, by, round_id,
+                                        also_user)
     except Exception as exc:
         if problems is not None:
             problems.append(
@@ -7141,6 +7145,43 @@ def record_frozen(project: str, sections: list[str], by: str,
                 f"{', '.join(sections)} will read as fresh next round, so a "
                 f"later pass may rewrite prose it should have left alone")
         return empty
+
+
+def _words_kept(old: str, new: str) -> float:
+    """prose.py's measure of how much of `old` survives in `new`."""
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import prose as _prose_mod                      # local engine, stdlib only
+    return _prose_mod.words_kept(old, new)
+
+
+def mark_protected(project: str, release: list[str] | None = None,
+                   problems: list[str] | None = None) -> dict:
+    """At the start of a round: hold the user's paragraphs, by text, so the
+    record a module writes when it finishes still knows which were theirs.
+    `release` names sections handed back with `--redraft` - their paragraphs
+    are the drafter's again, for this round."""
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import learn as _learn                      # local engine, stdlib only
+        data = _learn.read_provenance(project)
+        changed = False
+        for sec in release or []:
+            entry = data.get(sec)
+            if isinstance(entry, dict):
+                for row in entry.get("paragraphs") or []:
+                    if isinstance(row, dict) and row.get("owner") == "user":
+                        row["owner"] = "engine"
+                        changed = True
+                if entry.pop("protected", None) is not None:
+                    changed = True
+        if changed:
+            _learn.write_provenance(project, data)
+        return _learn.mark_protected(project)
+    except Exception as exc:
+        if problems is not None:
+            problems.append(f"cannot hold the paragraphs that are yours: "
+                            f"{exc}. A module this round may rewrite one")
+        return {"marked": {}}
 
 
 def import_prose(project: str, journal: str = "",
@@ -7425,8 +7466,28 @@ def move_passage(project: str, text: str, to_section: str,
                 "passage": passage.strip()[:200], "dry_run": dry_run})
     if dry_run:
         return res
+    # Whose the passage was before it moved, read before either file changes:
+    # an engine paragraph moved on a coauthor's say-so is still the engine's,
+    # and one of the user's is still theirs in its new section.
+    fr = load_frozen(project)
+    rows = {r["section"]: r for r in fr.get("sections", [])}
+    moved = " ".join(passage.split())
+    was_users = any(_words_kept(p, moved) >= 0.6
+                    for p in (rows.get(src) or {}).get(
+                        "protected_paragraphs", []))
     _write(src_path, new_src.strip() + "\n")
     _write(dst_path, new_dst.strip() + "\n")
+    # Re-recorded only where the record can say which paragraphs are whose:
+    # a section held whole from an older record keeps that hold.
+    keep = [sec for sec in (src, to_section)
+            if sec in rows and rows[sec]["state"] in
+            ("engine-owned", "partly-yours")]
+    if keep:
+        theirs = [t for sec in keep
+                  for t in rows[sec].get("protected_paragraphs") or []]
+        record_frozen(project, keep, "move-passage",
+                      problems=res["errors"],
+                      also_user=theirs + ([moved] if was_users else []))
     if journal and edit_id:
         res["ledger"] = set_edit_states(
             project, journal, {edit_id: ("applied", "moved from %s to %s by "
@@ -7564,9 +7625,13 @@ def resolve_section_scope(sections: list[str] | None,
 # verifies.
 EDITS_OUTRANK = (
     "THE USER'S EDITS OUTRANK EVERY FINDING, INCLUDING YOURS." + chr(10) +
-    "A FROZEN SECTION IS NOT REWRITTEN. The freeze is inferred by hash and "
-    "you check it yourself; a section the user has edited is theirs, and "
-    "their prose is not polished for them." + chr(10) +
+    "A FROZEN SECTION IS NOT REWRITTEN, AND A PARAGRAPH THE USER WROTE IS "
+    "LEFT VERBATIM. Check it yourself with `learn.py frozen --json`: a "
+    "`frozen` section is the user's; in a `partly-yours` section each of "
+    "its `protected_paragraphs` stays exactly as it is, in place, and the "
+    "rest is yours to work on. A small edit the user made to the engine's "
+    "paragraph (`edited_paragraphs`) is the new base - keep what they added "
+    "and changed; the wording around it is still yours to improve." + chr(10) +
     "A finding whose fix would REVERSE A LESSON taken from the user's own "
     "edits to the previous round is never applied. It is a question for the "
     "user - raise it as a **[FLAG: ...]** - because what you have found is "
@@ -7845,7 +7910,8 @@ AGENT_MODULES: dict[str, dict] = {
                    ("reports/rN/learned_rules.md", "")],
         "scoped_writes": "all",
         "task": "Rewrite the prose for how it reads. Skip every frozen "
-                "section - the user's own prose is not polished for them.\n"
+                "section, and leave every paragraph the user wrote verbatim "
+                "- the user's own prose is not polished for them.\n"
                 "WORK THE READING FINDINGS FIRST. reading.json lists what is "
                 "measurably wrong with this draft, each entry naming a "
                 "sentence: fix those, then read for what no engine can "
@@ -12120,7 +12186,11 @@ def plan(project: str, journal: str, preset: str = "coauthor",
     # Generating modules run once per section. Checking modules run every
     # round, and on a section the user has taken over they report advisory.
     fr = load_frozen(project, warnings)
-    frozen_now = list(fr.get("frozen") or [])
+    whole_frozen = list(fr.get("frozen") or [])
+    partly_now = list(fr.get("partly") or [])
+    # Both are the user's to hand back: a whole section, or the paragraphs
+    # of theirs inside one the engine otherwise works on.
+    frozen_now = whole_frozen + partly_now
     asked_redraft = [s for s in (redraft or []) if s]
     handed_back: list[str] = []
     if "all" in asked_redraft:
@@ -12133,15 +12203,18 @@ def plan(project: str, journal: str, preset: str = "coauthor",
                     "sections are %s" % (s, ", ".join(stems)))
             elif s not in frozen_now:
                 warnings.append(
-                    "--redraft %s: that section is not frozen, so there is "
-                    "nothing to hand back - it is already the engine's to "
-                    "rewrite" % s)
+                    "--redraft %s: nothing in that section is yours, so "
+                    "there is nothing to hand back - it is already the "
+                    "engine's to rewrite" % s)
             else:
                 handed_back.append(s)
     # Explicit, per invocation, never sticky. The lesson is banked either way
     # (5): learn-from-edits runs before draft-sections, so a section handed
     # back is learned from FIRST and discarded second.
-    still_frozen = [s for s in frozen_now if s not in handed_back]
+    still_frozen = [s for s in whole_frozen if s not in handed_back]
+    partly_kept = [s for s in partly_now if s not in handed_back]
+    held_paragraphs = {s: len((fr.get("protected") or {}).get(s) or [])
+                       for s in partly_kept}
 
     # --- a count of zero is a measurement, not a silence (item 88) --------
     #
@@ -12158,6 +12231,8 @@ def plan(project: str, journal: str, preset: str = "coauthor",
                       and r.get("hash_now")]
     freeze_counts = {"sections": len(fr_sections),
                      "frozen": len(still_frozen),
+                     "partly": len(partly_kept),
+                     "protected_paragraphs": sum(held_paragraphs.values()),
                      "engine_owned": len(engine_owned),
                      "written_but_unrecorded": len(never_recorded),
                      "ledger": fr.get("provenance", "")}
@@ -12177,6 +12252,29 @@ def plan(project: str, journal: str, preset: str = "coauthor",
                "it is" if len(still_frozen) == 1 else "they are",
                "it" if len(still_frozen) == 1 else "them",
                "it" if len(still_frozen) == 1 else "them"))
+    if partly_kept:
+        freeze_note += (("; " if freeze_note else "")
+                        + "paragraphs you wrote are left verbatim (%s); the "
+                          "engine works on the rest of %s. Small edits to "
+                          "the engine's own paragraphs do not freeze "
+                          "anything - they are kept as the base and learned "
+                          "from"
+                        % (", ".join("%s %d" % (k, v)
+                                     for k, v in held_paragraphs.items()),
+                           "that section" if len(partly_kept) == 1
+                           else "those sections"))
+    legacy = [r["section"] for r in fr_sections
+              if r.get("legacy") and r["section"] in still_frozen]
+    if legacy:
+        freeze_note += (("; " if freeze_note else "")
+                        + "%s %s recorded before paragraphs were tracked, so "
+                          "the whole section is held rather than the "
+                          "paragraphs you changed. This happens once: the "
+                          "next time the engine writes %s, it records "
+                          "paragraph by paragraph"
+                        % (", ".join(legacy),
+                           "was" if len(legacy) == 1 else "were",
+                           "it" if len(legacy) == 1 else "them"))
     if handed_back:
         freeze_note += (("; " if freeze_note else "")
                         + "%s handed back to the drafter - your edits to %s "
@@ -12488,6 +12586,9 @@ def plan(project: str, journal: str, preset: str = "coauthor",
                                       if scope and s not in scope],
             "sections_writable": writable,
             "frozen": still_frozen,
+            "partly": partly_kept,
+            "protected": {s: (fr.get("protected") or {}).get(s) or []
+                          for s in partly_kept},
             "redrafted": handed_back,
             # Item 130. The sections this plan was asked to REDRAFT, checked
             # and resolved, so `run --start` can record them on the run and
@@ -12947,6 +13048,10 @@ def run_ledger(project: str, journal: str, start: bool = False,
                         for m in pl["modules"]],
         }
         save()
+        held = mark_protected(project, run["redraft"], errors)
+        if held.get("marked"):
+            _log_run(jdir, "paragraphs held as yours: " + ", ".join(
+                "%s %d" % (k, v) for k, v in sorted(held["marked"].items())))
         _log_run(jdir, f"**run {run['run']} opened** - {preset} on "
                        f"{run['journal']} r{rnd}: "
                        + " -> ".join(m["module"] for m in run["modules"])
@@ -13010,6 +13115,15 @@ def run_ledger(project: str, journal: str, start: bool = False,
             if wrote_sections:
                 rec = record_frozen(project, wrote_sections, step,
                                     "r%d" % build_round(jdir), errors)
+                for sec, gone in sorted(
+                        (rec.get("protected_lost") or {}).items()):
+                    msg = ("%s changed %d paragraph%s of yours in %s.md that "
+                           "it was told to leave verbatim: %s"
+                           % (step, len(gone), "" if len(gone) == 1 else "s",
+                              sec, "; ".join('"%s..."' % g[:70]
+                                             for g in gone)))
+                    errors.append(msg)
+                    _log_run(jdir, "**" + msg + "**")
                 if rec["recorded"]:
                     provenance_recorded = sorted(
                         set(provenance_recorded) | set(rec["recorded"]))
@@ -22100,6 +22214,211 @@ def conflict_statements(project: str) -> dict:
     return out
 
 
+# ---------------------------------------------------------------------------
+# coi-form - the journal's blank disclosure form, filed when the journal is
+# chosen, and a PDF of it ready to send for signature
+# ---------------------------------------------------------------------------
+# Fetched when the journal is picked, not when the package is built: forms
+# come back over weeks from people who are not watching this project, so the
+# earlier they go out the less a submission waits on a signature. The agent
+# finds and downloads the form (this engine never reaches a network); this
+# files it, records where it came from, and makes the PDF an e-signature
+# service such as DocuSign takes - one envelope, every author a signer.
+
+COI_CONVERTIBLE = (".docx", ".doc", ".odt", ".rtf")
+
+
+def _set_requirement(path: str, block: str, key: str, value: str) -> None:
+    """Set `block.key` in a requirements.yml, keeping the line's comment.
+
+    Line-level on purpose: the file is the user's as much as the engine's,
+    and a round trip through a YAML writer would drop every comment in it."""
+    text = _read(path) if os.path.isfile(path) else ""
+    lines = text.split("\n")
+    start = next((i for i, ln in enumerate(lines)
+                  if re.match(r"^%s:\s*(#.*)?$" % re.escape(block), ln)), None)
+    if start is None:
+        lines += ["", "%s:" % block, "  %s: %s" % (key, value)]
+        _write(path, "\n".join(lines).strip("\n") + "\n")
+        return
+    end = next((i for i in range(start + 1, len(lines))
+                if lines[i] and not lines[i][0].isspace()
+                and not lines[i].startswith("#")), len(lines))
+    for i in range(start + 1, end):
+        m = re.match(r"^(\s+)%s:\s*(?:\"[^\"]*\"|[^#]*?)\s*(#.*)?$"
+                     % re.escape(key), lines[i])
+        if m:
+            lines[i] = "%s%s: %s%s" % (m.group(1), key, value,
+                                        ("  " + m.group(2)) if m.group(2)
+                                        else "")
+            break
+    else:
+        lines.insert(start + 1, "  %s: %s" % (key, value))
+    _write(path, "\n".join(lines))
+
+
+def _looks_like(path: str) -> str:
+    """What a downloaded file actually is, from its first bytes: a login page
+    saved as `form.pdf` is the download failure that reads as a success."""
+    try:
+        with open(path, "rb") as fh:
+            head = fh.read(512)
+    except OSError:
+        return "unreadable"
+    if head.startswith(b"%PDF"):
+        return "pdf"
+    if head.startswith(b"PK\x03\x04"):
+        return "zip"           # .docx, .odt - an Office Open XML package
+    if head.startswith(b"\xd0\xcf\x11\xe0"):
+        return "ole"           # .doc
+    if head.startswith(b"{\\rtf"):
+        return "rtf"
+    low = head.lstrip().lower()
+    if low.startswith(b"<!doctype html") or low.startswith(b"<html"):
+        return "html"
+    return "other"
+
+
+def coi_form(project: str, journal: str, file: str = "", url: str = "",
+             not_required: bool = False, dry_run: bool = False) -> dict:
+    """File the journal's blank COI form and make the PDF that goes out for
+    signature; or record that the journal publishes no form."""
+    res: dict = {"errors": [], "filed": [], "pdfs": [], "manual": [],
+                 "recorded": {}, "blank_form_dir": "", "dry_run": dry_run}
+    jdir = journal_dir(project, journal)
+    if not os.path.isdir(jdir):
+        res["errors"].append("no journal folder at %s; run init first" % jdir)
+        return res
+    req_path = os.path.join(jdir, "journal_requirements", "requirements.yml")
+    bdir = blank_coi_dir(project)
+    res["blank_form_dir"] = os.path.relpath(bdir, project).replace(
+        os.sep, "/") + "/"
+
+    if not_required:
+        if file:
+            res["errors"].append("REFUSED - --not-required and --file say "
+                                 "opposite things about the same journal")
+            return res
+        if not url:
+            res["errors"].append(
+                "REFUSED - --not-required needs --url: the guidelines page "
+                "that says disclosures are collected in the portal. Unsourced "
+                "is unknown, and unknown is not 'none'")
+            return res
+        if not dry_run:
+            _set_requirement(req_path, "submission", "coi_form",
+                             "not_required")
+            _set_requirement(req_path, "submission", "coi_form_url",
+                             '"%s"' % url)
+        res["recorded"] = {"coi_form": "not_required", "coi_form_url": url}
+        return res
+
+    if file:
+        if not url:
+            res["errors"].append("REFUSED - --file needs --url, the page the "
+                                 "form came from: a form with no source is a "
+                                 "form nobody can check is the journal's")
+            return res
+        if not os.path.isfile(file):
+            res["errors"].append("no such file: %s" % file)
+            return res
+        kind = _looks_like(file)
+        if kind == "html":
+            res["errors"].append(
+                "REFUSED - %s is a web page, not a form. The download most "
+                "likely hit a login or a challenge page; open the link in a "
+                "browser and save the form itself" % os.path.basename(file))
+            return res
+        ext = os.path.splitext(file)[1].lower()
+        if ext not in (".pdf",) + COI_CONVERTIBLE:
+            res["errors"].append(
+                "REFUSED - %s is not a form this can prepare for signature "
+                "(.pdf, %s)" % (os.path.basename(file),
+                                ", ".join(COI_CONVERTIBLE)))
+            return res
+        if (ext == ".pdf") != (kind == "pdf"):
+            res["errors"].append(
+                "REFUSED - %s is named %s but its contents are not; save the "
+                "form again from the journal's page" % (
+                    os.path.basename(file), ext))
+            return res
+        dest = os.path.join(bdir, os.path.basename(file))
+        if not dry_run:
+            os.makedirs(bdir, exist_ok=True)
+            if os.path.abspath(file) != os.path.abspath(dest):
+                shutil.copyfile(file, dest)
+            _set_requirement(req_path, "submission", "coi_form", "required")
+            _set_requirement(req_path, "submission", "coi_form_url",
+                             '"%s"' % url)
+        res["filed"].append(os.path.basename(dest))
+        res["recorded"] = {"coi_form": "required", "coi_form_url": url}
+
+    # Every form in the folder gets its PDF - the one filed now and any the
+    # user dropped there by hand.
+    names = sorted(os.listdir(bdir)) if os.path.isdir(bdir) else []
+    for name in names:
+        full = os.path.join(bdir, name)
+        stem, ext = os.path.splitext(name)
+        if not os.path.isfile(full) or name.lower() == "readme.md":
+            continue
+        if ext.lower() == ".pdf":
+            if _looks_like(full) == "pdf":
+                res["pdfs"].append({"form": name, "pdf": name,
+                                    "backend": "already a PDF"})
+            continue
+        if ext.lower() not in COI_CONVERTIBLE:
+            continue
+        pdf = os.path.join(bdir, stem + ".pdf")
+        if os.path.isfile(pdf) and os.path.getmtime(pdf) >= os.path.getmtime(
+                full) and _looks_like(pdf) == "pdf":
+            res["pdfs"].append({"form": name, "pdf": stem + ".pdf",
+                                "backend": "made earlier"})
+            continue
+        if dry_run:
+            res["pdfs"].append({"form": name, "pdf": stem + ".pdf",
+                                "backend": "would convert"})
+            continue
+        made, backend, why = docx_to_pdf(full, pdf)
+        if made:
+            res["pdfs"].append({"form": name, "pdf": stem + ".pdf",
+                                "backend": backend})
+        else:
+            # The supported third path, as for a render: thirty seconds by
+            # hand, said plainly, rather than a PDF that is not the form.
+            res["manual"].append({"form": name, "why": why,
+                                  "do": "open %s in Word and File > Save As "
+                                        "PDF, as %s.pdf, in the same folder"
+                                        % (name, stem)})
+    if file and not res["pdfs"] and not res["manual"] and not dry_run:
+        res["errors"].append("the form was filed but no PDF of it exists")
+    return res
+
+
+def print_coi_form(res: dict) -> None:
+    for e in res["errors"]:
+        print("  error  " + e)
+    if res["errors"]:
+        return
+    rec = res.get("recorded") or {}
+    if rec.get("coi_form") == "not_required":
+        print("  recorded  submission.coi_form: not_required (%s)"
+              % rec["coi_form_url"])
+        return
+    for f in res["filed"]:
+        print("  filed     %s%s" % (res["blank_form_dir"], f))
+    for p in res["pdfs"]:
+        print("  for signature  %s%s  (%s)" % (res["blank_form_dir"],
+                                               p["pdf"], p["backend"]))
+    for m in res["manual"]:
+        print("  no PDF    %s - %s; %s" % (m["form"], m["why"], m["do"]))
+    if not (res["filed"] or res["pdfs"] or res["manual"]):
+        print("  no blank form in %s yet" % res["blank_form_dir"])
+    elif res["pdfs"]:
+        print("\n  Send the PDF for signature - in DocuSign, one envelope with "
+              "every author as a signer. Each signed copy comes back into "
+              "conflict_statements/, named with that author's initials.")
+
+
 def conflict_form_warnings(coi: dict, req: dict) -> list[str]:
     """Whether anybody has a form to sign, which is a different question.
 
@@ -25444,6 +25763,22 @@ def main() -> int:
     bb.add_argument("--dry-run", action="store_true",
                     help="with --prune, say what would go and write nothing")
 
+    cf = sub.add_parser("coi-form", parents=[common],
+                        help="file the journal's blank COI form and make the "
+                             "PDF that goes out for signature")
+    cf.add_argument("project")
+    cf.add_argument("--journal", required=True)
+    cf.add_argument("--file", default="",
+                    help="the downloaded blank form (.pdf, .docx, .doc, "
+                         ".odt, .rtf)")
+    cf.add_argument("--url", default="",
+                    help="the page it came from - required with --file and "
+                         "--not-required")
+    cf.add_argument("--not-required", action="store_true",
+                    help="the journal publishes no form (collected in its "
+                         "portal); needs --url")
+    cf.add_argument("--dry-run", action="store_true")
+
     ri = sub.add_parser("ris", parents=[common],
                         help="references.bib -> references.ris")
     ri.add_argument("project")
@@ -26022,6 +26357,13 @@ def main() -> int:
         res = bib_cmd(args.project, args.prune, args.dry_run)
         print(json.dumps(res, indent=2, ensure_ascii=False)) if as_json \
             else print_bib(res)
+        return 2 if res["errors"] else 0
+
+    if args.cmd == "coi-form":
+        res = coi_form(args.project, args.journal, args.file, args.url,
+                       args.not_required, args.dry_run)
+        print(json.dumps(res, indent=2, ensure_ascii=False)) if as_json \
+            else print_coi_form(res)
         return 2 if res["errors"] else 0
 
     if args.cmd == "ris":

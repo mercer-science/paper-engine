@@ -1179,6 +1179,96 @@ def bib_path(project: str) -> str:
 # --- END LAYOUT CONTRACT ----------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# Who wrote a paragraph - the primitives under learn.py's freeze (4.1)
+# ---------------------------------------------------------------------------
+# They live here, below learn.py, because two of this file's own commands write
+# section files (`spelling --fix`, `italics --fix`) and have to keep the record
+# straight when they do. A correction the engine made is not an edit the user
+# made, and a section the engine owned before the fix is the engine's after it.
+
+PROVENANCE_REL = os.path.join(".provenance", "sections.json")
+
+# How much of an earlier paragraph a later one has to keep, in order, to be
+# that paragraph edited rather than a different one. A reworded phrase or an
+# added sentence keeps most of it; a paragraph the user wrote over keeps little.
+PARA_KEEP = 0.6
+
+
+def normalize_for_hash(text: str) -> str:
+    """Trailing whitespace, line endings, and runs of three or more blank
+    lines. Nothing else - a changed word is a change (4.1)."""
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    text = "\n".join(line.rstrip() for line in text.split("\n"))
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip() + "\n"
+
+
+def section_hash(text: str) -> str:
+    return hashlib.sha256(
+        normalize_for_hash(text).encode("utf-8")).hexdigest()
+
+
+def prose_paragraphs(text: str) -> list[str]:
+    """The paragraphs of a section that are prose: blank-line separated,
+    whitespace collapsed, with headings and HTML comments left out - a
+    renamed heading is not a paragraph anyone wrote."""
+    text = re.sub(r"<!--.*?-->", "", normalize_for_hash(text), flags=re.S)
+    out = []
+    for block in re.split(r"\n\s*\n", text):
+        lines = [ln for ln in block.split("\n")
+                 if ln.strip() and not ln.lstrip().startswith("#")]
+        para = " ".join(" ".join(lines).split())
+        if para:
+            out.append(para)
+    return out
+
+
+def _para_words(p: str) -> list[str]:
+    return re.findall(r"[\w.%+-]+", p.lower())
+
+
+def words_kept(old: str, new: str) -> float:
+    """The share of `old`'s words that `new` keeps, in order."""
+    import difflib
+    a, b = _para_words(old), _para_words(new)
+    if not a:
+        return 0.0
+    sm = difflib.SequenceMatcher(None, a, b, autojunk=False)
+    return sum(m.size for m in sm.get_matching_blocks()) / len(a)
+
+
+def keep_engine_ownership(path: str, before: str, after: str) -> bool:
+    """After the engine itself rewrote `path`, keep the hash of record in step.
+
+    Only when the record matched `before` - a section the user had already
+    edited stays exactly as it was recorded, and the paragraph comparison
+    reads the engine's correction there as the small edit it is."""
+    prov = os.path.join(os.path.dirname(path), PROVENANCE_REL)
+    stem = os.path.splitext(os.path.basename(path))[0]
+    try:
+        with open(prov, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (OSError, ValueError):
+        return False
+    entry = data.get(stem) if isinstance(data, dict) else None
+    if not isinstance(entry, dict) or entry.get("sha256") != section_hash(before):
+        return False
+    entry["sha256"] = section_hash(after)
+    snap = entry.get("paragraphs")
+    new_paras = prose_paragraphs(after)
+    # A fix inside words leaves the paragraphs where they were, so each keeps
+    # its owner. Anything else is left for the paragraph comparison to read.
+    if isinstance(snap, list) and len(snap) == len(new_paras):
+        for row, para in zip(snap, new_paras):
+            row["text"] = para
+    with open(prov, "w", encoding="utf-8", newline="") as fh:
+        json.dump(data, fh, indent=2, ensure_ascii=False)
+        fh.write("\n")
+    return True
+
+
+
 # A review's body stem: a two-digit order prefix and a slug
 # (review-paper 7). The prefix carries document order and is the only thing
 # that does.
@@ -5070,6 +5160,7 @@ def spelling(paths: list[str], fix: bool = False,
             with open(path, "w", encoding="utf-8", newline="") as fh:
                 fh.write(new)
             out["written"].append(path)
+            keep_engine_ownership(path, text, new)
             for f in out["findings"]:
                 if f["file"] == path:
                     f["fixed"] = True
@@ -5378,6 +5469,7 @@ def italics(paths: list[str], fix: bool = False,
             with open(path, "w", encoding="utf-8", newline="") as fh:
                 fh.write(new)
             out["written"].append(path)
+            keep_engine_ownership(path, text, new)
             for f in out["findings"]:
                 if f["file"] == path and f["writes"]:
                     f["fixed"] = True

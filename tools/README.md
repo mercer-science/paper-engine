@@ -2223,21 +2223,30 @@ rule generalizes one step: a rule scoped to `life_science` reaches
 
 ## Frozen sections
 
-`frozen <project>` compares each section against the hash the engine recorded in
-`source_text/.provenance/sections.json` and returns one of four states: **fresh**
-(no entry), **engine-owned** (hash matches — may be redrafted), **frozen** (hash
-differs — the user has taken it over), **wiped** (entry present, file gone — the
-existing "empty `source_text/` to force a redraft" gesture, which has to keep
-working). Hashing normalizes trailing whitespace, line endings and runs of three
-or more blank lines, and nothing else: a changed word is a change.
+`frozen <project>` compares each section against the record the engine wrote in
+`source_text/.provenance/sections.json` - the section's hash and, since
+2026-10, each paragraph's text and owner - and returns one of five states:
+**fresh** (no entry), **engine-owned** (every paragraph the engine's; `adopted`
+when the user made small edits), **partly-yours** (some paragraphs the user
+wrote: listed as `protected_paragraphs`, left verbatim, the rest the engine's),
+**frozen** (every paragraph the user's, or a `legacy` record from before
+paragraphs were tracked), **wiped** (entry present, file gone - the existing
+"empty `source_text/` to force a redraft" gesture, which has to keep working).
+Hashing normalizes trailing whitespace, line endings and runs of three or more
+blank lines, and nothing else.
 
-Section granularity, never paragraph. A paragraph-level hash would let the engine
-keep writing around the user's edits, which is the behaviour that makes a tool
-untrustworthy. `frozen --record <section> --by revise-prose` writes the hash of
-record after a module wrote or revised a section — and the revision pass updating
-it is the regression this design is most likely to have, because without it a
-revised section is frozen against itself and the engine stops touching prose it
-wrote.
+**Paragraph granularity, for what the user wrote.** A paragraph is the user's
+when it keeps less than `PARA_KEEP` (60%) of the words of every recorded
+paragraph, in order - new, or rewritten. A reworded phrase or an added sentence
+keeps most of the engine's paragraph and leaves it the engine's. The old rule,
+section granularity on an exact hash, froze a whole Introduction for a phrase
+and the readability pass then skipped prose nobody had claimed (BgRT).
+`mark_protected` holds the user's paragraphs by text when a round opens, so
+`record_provenance` - run when a module finishes - keeps them the user's in
+the new record and reports any it lost (`protected_lost`). `frozen --record
+<section> --by revise-prose` writes the record after a module wrote or revised
+a section; without it a revised section is the user's against itself and the
+engine stops touching prose it wrote.
 
 **Nothing in the engine called that subcommand for the first six months of its
 life** (item 88), so the ledger did not exist in any project, every section took

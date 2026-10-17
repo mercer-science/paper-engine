@@ -60,7 +60,6 @@ import argparse
 import collections
 import datetime
 import difflib
-import hashlib
 import importlib.util
 import json
 import os
@@ -2124,21 +2123,50 @@ def _propose(edit: dict) -> str:
 # frozen - 4.1
 # ---------------------------------------------------------------------------
 
-PROVENANCE_REL = os.path.join(".provenance", "sections.json")
+# The primitives are prose.py's, because prose.py's own --fix commands write
+# section files and keep this record in step when they do.
+PROVENANCE_REL = prose.PROVENANCE_REL
+PARA_KEEP = prose.PARA_KEEP
+normalize_for_hash = prose.normalize_for_hash
+section_hash = prose.section_hash
 
 
-def normalize_for_hash(text: str) -> str:
-    """Trailing whitespace, line endings, and runs of three or more blank
-    lines. Nothing else - a changed word is a change (4.1)."""
-    text = text.replace("\r\n", "\n").replace("\r", "\n")
-    text = "\n".join(line.rstrip() for line in text.split("\n"))
-    text = re.sub(r"\n{3,}", "\n\n", text)
-    return text.strip() + "\n"
+def classify_paragraphs(current: list[str], snapshot: list[dict],
+                        protected: list[str]) -> list[dict]:
+    """Whose each paragraph of a section is: the engine's or the user's.
 
-
-def section_hash(text: str) -> str:
-    return hashlib.sha256(
-        normalize_for_hash(text).encode("utf-8")).hexdigest()
+    A paragraph is the user's when the user wrote it - new, or rewritten so
+    that it keeps less than PARA_KEEP of any paragraph the record holds - or
+    when it is (an edit of) a paragraph already recorded as theirs. A
+    reworded phrase or an added sentence in the engine's paragraph leaves it
+    the engine's: `edited`, and the edit is learned from like any other."""
+    known = [(r.get("text", ""), r.get("owner", "engine"))
+             for r in snapshot if isinstance(r, dict)]
+    known += [(t, "user") for t in protected]
+    exact = {}
+    for text, owner in known:
+        # A paragraph recorded as the user's stays theirs even if the same
+        # words also sit in an engine row.
+        if exact.get(text) != "user":
+            exact[text] = owner
+    rows = []
+    for para in current:
+        if para in exact:
+            rows.append({"text": para, "owner": exact[para],
+                         "kind": "unchanged"})
+            continue
+        best, owner = 0.0, "user"
+        for text, who in known:
+            kept = prose.words_kept(text, para)
+            if kept > best or (kept == best and who == "user"):
+                best, owner = kept, who
+        if best >= PARA_KEEP:
+            rows.append({"text": para, "owner": owner, "kind": "edited",
+                         "kept": round(best, 2)})
+        else:
+            rows.append({"text": para, "owner": "user", "kind": "new",
+                         "kept": round(best, 2)})
+    return rows
 
 
 def provenance_path(project: str) -> str:
@@ -2169,15 +2197,22 @@ def write_provenance(project: str, data: dict) -> str:
 
 
 def frozen(project: str) -> dict:
-    """Which sections the user has taken over, inferred by hash (4.1).
+    """Which prose the user has taken over, paragraph by paragraph (4.1).
 
-    Four states, and the fourth is the one a hash test gets wrong: a section
-    whose file is GONE is the existing "empty source_text/ to force a
-    redraft" gesture, and it has to keep working.
+    A paragraph the user wrote - new, or rewritten past recognition - is
+    theirs and is not rewritten. A reworded phrase or an added sentence in a
+    paragraph the engine wrote is NOT a takeover: freezing a whole section
+    for it protected prose nobody had claimed and stopped every later pass
+    from touching it (BgRT, 2026-10). So a section is:
 
-    Section granularity, never paragraph. A paragraph-level hash would let the
-    engine keep writing around the user's edits, which is the behaviour that
-    makes a tool untrustworthy.
+      engine-owned  every paragraph is the engine's (`adopted` when the user
+                    made small edits, which become the base and are learned)
+      partly-yours  some paragraphs are the user's - the engine works on the
+                    rest and leaves those verbatim (`protected_paragraphs`)
+      frozen        every paragraph is the user's, or the record predates
+                    paragraph tracking (`legacy`) and cannot say which
+      fresh/wiped   nothing recorded / the file is gone - the existing
+                    "empty source_text/ to force a redraft" gesture
     """
     data = read_provenance(project)
     st = prose.source_text_dir(project)
@@ -2186,17 +2221,41 @@ def frozen(project: str) -> dict:
         path = os.path.join(st, f"{section}.md")
         entry = data.get(section) or {}
         text = _read(path) if os.path.isfile(path) else None
+        paras: list[dict] = []
+        legacy = adopted = False
+        snapshot = entry.get("paragraphs")
         if text is None:
             state = "wiped" if entry else "fresh"
         elif not text.strip():
             state = "fresh"
         elif not entry.get("sha256"):
             state = "fresh"
+        elif isinstance(snapshot, list):
+            paras = classify_paragraphs(prose.prose_paragraphs(text),
+                                        snapshot,
+                                        list(entry.get("protected") or []))
+            mine = sum(1 for r in paras if r["owner"] == "user")
+            if paras and mine == len(paras):
+                state = "frozen"
+            elif mine:
+                state = "partly-yours"
+            else:
+                state = "engine-owned"
+                adopted = entry["sha256"] != section_hash(text)
         elif entry["sha256"] == section_hash(text):
             state = "engine-owned"
         else:
-            state = "frozen"
+            # Recorded before paragraphs were: there is nothing to tell the
+            # user's paragraphs from the engine's, so the whole section is
+            # held, and said to be held for that reason.
+            state, legacy = "frozen", True
         rows.append({"section": section, "state": state,
+                     "legacy": legacy, "adopted": adopted,
+                     "protected_paragraphs": [r["text"] for r in paras
+                                              if r["owner"] == "user"],
+                     "edited_paragraphs": [r["text"] for r in paras
+                                           if r["owner"] == "engine"
+                                           and r["kind"] == "edited"],
                      "path": path,
                      "written_by": entry.get("written_by"),
                      "revised_by": entry.get("revised_by"),
@@ -2207,13 +2266,49 @@ def frozen(project: str) -> dict:
     return {"project": project, "provenance": provenance_path(project),
             "sections": rows,
             "frozen": [r["section"] for r in rows if r["state"] == "frozen"],
+            "partly": [r["section"] for r in rows
+                       if r["state"] == "partly-yours"],
+            "protected": {r["section"]: r["protected_paragraphs"]
+                          for r in rows if r["state"] == "partly-yours"},
             "counts": {"sections": len(rows),
                        "frozen": sum(1 for r in rows
-                                     if r["state"] == "frozen")}}
+                                     if r["state"] == "frozen"),
+                       "partly": sum(1 for r in rows
+                                     if r["state"] == "partly-yours"),
+                       "protected_paragraphs": sum(
+                           len(r["protected_paragraphs"]) for r in rows
+                           if r["state"] == "partly-yours")}}
+
+
+def mark_protected(project: str) -> dict:
+    """Write down, before a round's modules run, which paragraphs are the
+    user's right now.
+
+    The record is rewritten when a module finishes, from the text the module
+    left - and by then the user's paragraphs are mixed in with the engine's
+    and nothing says which were which. Held here, they stay the user's in
+    the new record, and one the module dropped or rewrote is reported."""
+    res = frozen(project)
+    data = read_provenance(project)
+    marked: dict = {}
+    for row in res["sections"]:
+        entry = data.get(row["section"])
+        if not isinstance(entry, dict) or row["state"] not in (
+                "partly-yours", "frozen") or row["legacy"]:
+            continue
+        held = list(dict.fromkeys(list(entry.get("protected") or [])
+                                  + row["protected_paragraphs"]))
+        if held != list(entry.get("protected") or []):
+            entry["protected"] = held
+            marked[row["section"]] = len(held)
+    if marked:
+        write_provenance(project, data)
+    return {"marked": marked}
 
 
 def record_provenance(project: str, sections: list[str], by: str,
-                      round_id: str) -> dict:
+                      round_id: str, also_user: list[str] | None = None
+                      ) -> dict:
     """Write the hash of record after a module wrote or revised a section.
 
     1c updates it, and that is the regression this design is most likely to
@@ -2223,12 +2318,32 @@ def record_provenance(project: str, sections: list[str], by: str,
     data = read_provenance(project)
     st = prose.source_text_dir(project)
     written: list[str] = []
+    lost: dict = {}
     for section in sections:
         path = os.path.join(st, f"{section}.md")
         if not os.path.isfile(path):
             continue
         entry = dict(data.get(section) or {})
-        entry["sha256"] = section_hash(_read(path))
+        text = _read(path)
+        # The user's paragraphs before this write: the ones the record
+        # already calls theirs, plus the ones held at the start of the round.
+        theirs = [r.get("text", "") for r in (entry.get("paragraphs") or [])
+                  if isinstance(r, dict) and r.get("owner") == "user"]
+        theirs += list(entry.get("protected") or []) + list(also_user or [])
+        theirs = list(dict.fromkeys(t for t in theirs if t))
+        paras = prose.prose_paragraphs(text)
+        snap = []
+        for para in paras:
+            mine = para in theirs or any(
+                prose.words_kept(t, para) >= PARA_KEEP for t in theirs)
+            snap.append({"text": para, "owner": "user" if mine else "engine"})
+        gone = [t for t in theirs if t not in paras and not any(
+            prose.words_kept(t, p) >= PARA_KEEP for p in paras)]
+        if gone:
+            lost[section] = gone
+        entry["paragraphs"] = snap
+        entry.pop("protected", None)
+        entry["sha256"] = section_hash(text)
         entry["round"] = round_id or entry.get("round")
         entry["written"] = datetime.datetime.now(
             datetime.timezone.utc).replace(microsecond=0).isoformat().replace(
@@ -2246,8 +2361,13 @@ def record_provenance(project: str, sections: list[str], by: str,
         data[section] = entry
         written.append(section)
     path = write_provenance(project, data)
+    # A paragraph of the user's that the write removed or rewrote. Reported,
+    # because the brief that told the module to leave it verbatim is a
+    # promise nothing else checks.
     return {"provenance": path, "recorded": written,
-            "counts": {"recorded": len(written)}}
+            "protected_lost": lost,
+            "counts": {"recorded": len(written),
+                       "protected_lost": sum(len(v) for v in lost.values())}}
 
 
 # ---------------------------------------------------------------------------
@@ -2710,6 +2830,20 @@ def print_frozen(res: dict) -> None:
         by = row["revised_by"] or row["written_by"] or "-"
         print(f"  {row['section']:16} {row['state']:14} last written by {by}"
               + (f" in {row['round']}" if row["round"] else ""))
+    for row in res["sections"]:
+        if row["state"] == "partly-yours":
+            n = len(row["protected_paragraphs"])
+            print(f"\n  {row['section']}.md: {n} paragraph"
+                  f"{'' if n == 1 else 's'} of yours, left verbatim; the "
+                  f"engine works on the rest")
+        elif row["adopted"]:
+            print(f"\n  {row['section']}.md: small edits only - kept as the "
+                  f"base, learned from, and the section is still the "
+                  f"engine's")
+        elif row["legacy"]:
+            print(f"\n  {row['section']}.md: recorded before paragraphs were "
+                  f"tracked, so the whole section is held. `--redraft "
+                  f"{row['section']}` hands it back")
     if res["frozen"]:
         many = len(res["frozen"]) > 1
         print("\n  " + ", ".join(f"{s}.md" for s in res["frozen"])
