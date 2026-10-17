@@ -6298,6 +6298,40 @@ def test_agent_brief(tmp: str) -> None:
     check("...and the refusal says why", "--journal" in " ".join(res["errors"]),
           True)
 
+    # (6b) The auto-loaded field is report-only, and the brief says so per
+    # module. "every report file you write" was read as "every file you write",
+    # so draft-sections - which writes only manuscript sections - headed those
+    # with `Auto-loaded files:`, and it would have shipped inside the paper.
+    # A module WITH a report names that file as the only home for the field; a
+    # module WITHOUT one is sent to the hand-back and forbidden the manuscript.
+    stats = ms.agent_brief(root, "stats-check", "Langmuir")["prompt"]
+    check("a report-writing module names its report as the field's only home",
+          "THE FIELD GOES IN THAT FILE AND NOWHERE ELSE" in stats
+          and "stats_report.md" in stats.split("THE FIELD GOES IN THAT FILE")[1]
+             .split("\n")[0],
+          True)
+    check("...and it does not forbid a manuscript file it never writes",
+          "DO NOT write this field into any other file" not in stats, True)
+
+    draft = ms.agent_brief(root, "draft-sections", "Langmuir")["prompt"]
+    check("a generator with no report file is sent to the hand-back, not a file",
+          "FIRST line of the hand-back" in draft
+          and "FIRST line of your report" not in draft, True)
+    check("...and is explicitly forbidden to put the field in the manuscript",
+          "DO NOT write this field into any other file" in draft
+          and "ships `%s`" % ms.AUTO_LOADED_FIELD in draft
+          and "source_text" in draft.split("DO NOT write this field")[1]
+             .split("\n")[0],
+          True, "item: the metadata leak into the manuscript")
+
+    revise = ms.agent_brief(root, "revise-prose", "Langmuir")["prompt"]
+    check("a module that writes both reports and sections splits them",
+          "THE FIELD GOES IN THAT FILE" in revise
+          and "DO NOT write this field into any other file" in revise
+          and "source_text" in revise.split("DO NOT write this field")[1]
+             .split("\n")[0],
+          True)
+
     # (7) A module that does not run as an agent says so, with the reason.
     # Absence would read as an oversight and invite someone to "fix" it.
     res = ms.agent_brief(root, "assemble", "Langmuir")
