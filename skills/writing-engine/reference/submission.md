@@ -1172,6 +1172,49 @@ stale `EXAMPLE_STUDY_manuscript.docx` beside a fresh `manuscript_r5.docx` is the
 one failure this folder can produce. Files from a previous run under a
 different name are removed and named in the output.
 
+### Open the upload set and look — the last step before you send
+
+**This step is required, and it is a human's, not the engine's.** The engine
+builds the cover letter and the title page with pandoc and then reads them back
+(`submission-package` scans each built `.docx` for meta/placeholder text and
+for Word-theme headings, and holds the package NOT SENDABLE until they are
+clean), but pandoc renders faithfully whatever it is handed: a check the engine
+was never told to run is a leak nobody sees. So before the files go out, open
+**every** file in `{JOURNAL}/submission/upload/` in Word and confirm it reads
+like a submission. The automated read-back is the floor; this is the sign-off.
+
+Go file by file, and on the cover letter and the title page especially:
+
+- **No meta heading.** The first line is the letter's date or the paper's
+  title — never `Cover letter - <journal>: … template`, never `Title Page`,
+  never a `## Title` label. (This is exactly what leaked before: the provenance
+  the engine writes to the `.md` is an HTML comment pandoc drops; if you see it
+  in the `.docx`, something rebuilt the file by another path.)
+- **Headings are black, not blue.** A heading in Word's accent blue (Aptos
+  Display) means the file was built without `journal_requirements/reference.docx`.
+  Rebuild it (`manuscript.py reference-doc`) and re-run the package.
+- **One font throughout, body size, black** — the same across *all* upload
+  files. A blue-heading title page next to a black-heading manuscript is the
+  tell that one file missed the reference document.
+- **The title page opens with the actual title**, then the running head,
+  authors, counts and keywords — no scaffolding label above it.
+- **The cover letter** carries a real date (not `[Date]`), is addressed to the
+  editor, keeps the "original / not under consideration / not previously
+  published" sentence, and contains no note written to the author and no
+  `[FLAG: …]`. Reviewer emails belong in the portal, not the letter, unless the
+  journal asked for them in it.
+- **No `[FLAG: …]`, `[Date]`, `TODO`, or `<!-- … -->` anywhere.** A visible
+  `[FLAG]` means the package is not sendable — resolve it (`flag-resolver`),
+  do not delete it.
+- **File metadata is clean** on an anonymized submission: `docProps/core.xml`
+  `lastModifiedBy`/`dc:creator` carry no author name. (`manuscript.py
+  format-check` reports this on the manuscript; the package files are built the
+  same way.)
+
+If anything here is wrong, fix the source — the `.md` beside the `.docx`, or
+the reference document — and rebuild. Never hand-edit a file in `upload/`: it
+is a copy, and the next `submission-names` run overwrites it.
+
 ## 8b. ai-disclosure — the engine drafts it, the author confirms it
 
 ```bash

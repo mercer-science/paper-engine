@@ -8152,6 +8152,13 @@ def test_submission_package(tmp: str) -> None:
                       [w for w in ("template", "Cover letter -", "Title page -",
                                    "<!--") if w in txt],
                       [], txt[:200])
+                # The same read, through the gate the engine now runs: the
+                # built file is clean of leaks and of Word-theme headings.
+                check("the engine's read-back finds no leak in %s.docx" % base,
+                      ms._package_docx_leaks(docx), [])
+                jfont = ms._req_font(ms.read_flat_yml(reqp))[0]
+                check("...and no blue/theme heading in %s.docx" % base,
+                      ms._package_docx_theme(docx, jfont), [])
     revs = read(os.path.join(sdir, "suggested_reviewers_r1.md"))
     check("a file the journal did not ask for is written anyway, as a template",
           "template" in revs.splitlines()[0], True, revs.splitlines()[0])
@@ -8199,6 +8206,42 @@ def test_submission_package(tmp: str) -> None:
                   next(os.path.basename(w["path"]) for w in again["written"]
                        if "checklist" in w["path"]),
                   "checklist_r2.md")
+
+
+def test_package_docx_readback_gate(tmp: str) -> None:
+    section("The package read-back catches a leak and a blue heading")
+    if not shutil.which("pandoc"):
+        skip("package read-back", "pandoc is not on PATH")
+        return
+    d = os.path.join(tmp, "readback")
+    os.makedirs(d, exist_ok=True)
+    # A deliverable built the old way: a visible package header and a bracketed
+    # date placeholder, and - with no reference document - pandoc's own Word
+    # theme (Aptos Display headings in accent blue).
+    md = os.path.join(d, "bad.md")
+    ms._write(md, "# Cover letter - jacmp: not requested, template\n\n"
+                  "[Date]\n\nDear Editor,\n\n## A heading\n\nBody text.\n")
+    bad = os.path.join(d, "bad.docx")
+    subprocess.run([pandoc_bin(), md, "-o", bad], check=True)
+
+    leaks = ms._package_docx_leaks(bad)
+    check("a visible package-header line is caught",
+          any("package-header" in x for x in leaks), True, str(leaks))
+    check("a [Date] placeholder is caught",
+          any("[date]" in x.lower() for x in leaks), True, str(leaks))
+    themed = ms._package_docx_theme(bad, "Times New Roman")
+    check("pandoc's default Word-theme heading is caught",
+          bool(themed), True, str(themed))
+
+    # And the comment the engine actually writes - the one pandoc drops - does
+    # NOT trip the scan, because it never reaches the built document.
+    good = os.path.join(d, "good.md")
+    ms._write(good, "<!-- Cover letter - jacmp: required -->\n\n"
+                    "2026-11-09\n\nDear Editor,\n\nBody text.\n")
+    gdocx = os.path.join(d, "good.docx")
+    subprocess.run([pandoc_bin(), good, "-o", gdocx], check=True)
+    check("the dropped provenance comment is not a false positive",
+          ms._package_docx_leaks(gdocx), [])
 
 
 def test_round_counter_is_the_projects(tmp: str) -> None:
@@ -14283,6 +14326,7 @@ def main() -> int:
         test_ai_disclosure(tmp)
         test_outline_regions(tmp)
         test_submission_package(tmp)
+        test_package_docx_readback_gate(tmp)
         test_round_counter_is_the_projects(tmp)
         test_revision_is_scoped_to_what_came_back(tmp)
         test_summary_matches_the_document(tmp)
