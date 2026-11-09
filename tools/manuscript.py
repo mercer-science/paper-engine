@@ -21236,6 +21236,29 @@ def _package_header(name: str, journal: str, says: str) -> str:
     return "# %s - %s: %s\n" % (title, journal_folder(journal), says)
 
 
+def _package_provenance(name: str, journal: str, says: str) -> str:
+    """The same provenance as `_package_header`, but as an HTML comment.
+
+    The cover letter and the title page are the two package files that go to
+    the journal as DOCUMENTS - pandoc builds a `.docx` from each. A visible
+    `# Cover letter - jacmp: ... template` heading at the top, which is what
+    `_package_header` emits, becomes the first heading of that .docx and
+    reaches the editor: a letter that opens by announcing the requirement it
+    was written against, and the word "template", on the page a human reads.
+    That is item one of the submission sweep ("scan every upload doc for
+    meta/placeholder text") failing at the source.
+
+    So these two carry their provenance as a comment instead. pandoc's docx
+    writer drops raw HTML, so the line stays in the `.md` the user edits - it
+    still says whether the journal asked for the file and in whose words - and
+    never appears in the built document. The guidance files that stay markdown
+    (`statements`, `suggested_reviewers`, `checklist`) keep the visible
+    `_package_header`; they are read as markdown, not uploaded as documents.
+    """
+    title = name.replace("_", " ").capitalize()
+    return "<!-- %s - %s: %s -->\n" % (title, journal_folder(journal), says)
+
+
 def _cover_letter_md(project: str, journal: str, req: dict, ta: dict,
                      info: dict, rnd: int, says: str) -> str:
     editor = (req.get("submission.editor") or "").strip()
@@ -21243,7 +21266,7 @@ def _cover_letter_md(project: str, journal: str, req: dict, ta: dict,
         editor = ""
     rows = info.get("authors") or []
     corr = (info.get("corresponding") or "").strip()
-    lines = [_package_header("cover_letter", journal, says), "",
+    lines = [_package_provenance("cover_letter", journal, says), "",
              TODAY, "",
              "Dear %s," % (editor or "Editor"), ""]
     if not editor:
@@ -21340,10 +21363,19 @@ def _cover_letter_md(project: str, journal: str, req: dict, ta: dict,
 def _title_page_md(project: str, journal: str, req: dict, ta: dict,
                    info: dict, says: str) -> str:
     counts = (_prose(project, "length").get("counts") or {})
-    lines = [_package_header("title_page", journal, says), ""]
-    lines += ["## Title", "", ta.get("title")
-              or "**[FLAG: author]** no title in "
-                 "`%stitle_abstract.md`" % stpfx(project), ""]
+    # The title page is the second document pandoc builds (see
+    # `_package_provenance`), so it carries no visible meta heading either, and
+    # it OPENS WITH THE ACTUAL TITLE rather than a "## Title" label: an editor
+    # screening the page should read the paper's title first, not the word
+    # "Title". The title is the document's own H1; when there is none yet, the
+    # flag stands where the title would, which is what keeps the page not
+    # sendable until it is written.
+    lines = [_package_provenance("title_page", journal, says), ""]
+    if ta.get("title"):
+        lines += ["# " + ta["title"], ""]
+    else:
+        lines += ["**[FLAG: author]** no title in "
+                  "`%stitle_abstract.md`" % stpfx(project), ""]
     lines += ["## Running head", "", ta.get("running_title")
               or "**[FLAG: author]** no running title recorded", ""]
     block = author_block(info)
@@ -22608,6 +22640,24 @@ def submission_package(project: str, journal: str,
     os.makedirs(sdir, exist_ok=True)
     pandoc = shutil.which("pandoc")
     ref_doc = os.path.join(jdir, "journal_requirements", "reference.docx")
+    # The cover letter and the title page are built by pandoc too, so without a
+    # reference document they inherit pandoc's default Word theme - Aptos
+    # Display headings in #0F4761 blue over the body font - exactly like a
+    # manuscript built without one. `assemble` builds reference.docx; a user
+    # who runs `submission-package` before assembling would otherwise upload a
+    # blue-headed cover letter. Build it here too when it is missing, and say
+    # so if it cannot be built, so the two .docx carry the plain manuscript
+    # styling rather than Word's theme.
+    wants_docx = any(e == "docx" for _n, e, _k, _w in package)
+    if pandoc and wants_docx and not os.path.isfile(ref_doc):
+        made = reference_doc(project, journal)
+        warnings += made.get("warnings", []) + made.get("errors", [])
+    if pandoc and wants_docx and not os.path.isfile(ref_doc):
+        warnings.append(
+            "no journal_requirements/reference.docx and it could not be "
+            "built, so cover_letter and title_page carry pandoc's default "
+            "Word theme (blue Aptos headings) rather than the plain "
+            "manuscript styling; run `manuscript.py reference-doc`")
     for name, ext, _key, _what in package:
         stem = "%s_r%d" % (name, rnd)
         md_path = os.path.join(sdir, stem + ".md")

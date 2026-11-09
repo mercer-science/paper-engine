@@ -8119,11 +8119,39 @@ def test_submission_package(tmp: str) -> None:
            if os.path.getsize(os.path.join(root, w["path"])) < 40], [])
 
     letter = read(os.path.join(sdir, "cover_letter_r1.md"))
+    # The provenance stays in the .md the user edits - it still names the
+    # requirement the letter was written to - but as an HTML comment pandoc
+    # drops, NOT a visible heading that would reach the editor in the .docx.
     check("a required cover letter names the requirement it was written to",
           letter.splitlines()[0],
-          "# Cover letter - %s: required" % ms.journal_folder("Langmuir"))
+          "<!-- Cover letter - %s: required -->"
+          % ms.journal_folder("Langmuir"))
+    check("...and its provenance is a comment, not a visible heading",
+          any(ln.startswith("# Cover letter") for ln in letter.splitlines()),
+          False, "a `# Cover letter - jacmp: ... template` heading becomes the "
+          "first line of the uploaded .docx and reaches the editor")
     check("...and is a letter, not a stub",
           "Dear " in letter and "Sincerely," in letter, True)
+    tp = read(os.path.join(sdir, "title_page_r1.md"))
+    check("the title page opens with the actual title, not a 'Title' label",
+          [ln for ln in tp.splitlines() if ln.strip()][1],
+          "# Chemoreceptor arrays are more ordered in thermophiles")
+    check("...and carries no '## Title' or '# Title page' label",
+          any(ln.strip() in ("## Title", "# Title page")
+              for ln in tp.splitlines()),
+          False)
+    # The point of all of the above: no meta/template text in the built .docx.
+    if shutil.which("pandoc"):
+        for base in ("cover_letter", "title_page"):
+            docx = os.path.join(sdir, "%s_r1.docx" % base)
+            if os.path.isfile(docx):
+                txt = "\n".join(
+                    t for _s, t in paragraphs(
+                        ms._docx_part(docx, "word/document.xml")))
+                check("no leaked meta text in the built %s.docx" % base,
+                      [w for w in ("template", "Cover letter -", "Title page -",
+                                   "<!--") if w in txt],
+                      [], txt[:200])
     revs = read(os.path.join(sdir, "suggested_reviewers_r1.md"))
     check("a file the journal did not ask for is written anyway, as a template",
           "template" in revs.splitlines()[0], True, revs.splitlines()[0])
