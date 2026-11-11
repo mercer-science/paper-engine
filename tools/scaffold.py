@@ -133,6 +133,11 @@ FILES: list[tuple[str, str | None]] = [
     ("plan/figures/_template/figure.R", "plan/figures/_template/figure.R"),
     ("plan/tables/_template/table.R", "plan/tables/_template/table.R"),
     ("plan/relevant_literature/README.md", "plan/relevant_literature/README.md"),
+    # A home for the project's specification documents - the fixed specs the
+    # work is held to, kept apart from plan/README.md's living plan. Like the
+    # conflict_statements inbox, its README is the whole instruction and the
+    # folder ships empty apart from it: a file here means a spec was written.
+    ("plan/specifications/README.md", "plan/specifications/README.md"),
     ("plan/memory/MEMORY.md", "plan/memory/MEMORY.md"),
 
     ("drafts/references.bib", "drafts/references.bib"),
